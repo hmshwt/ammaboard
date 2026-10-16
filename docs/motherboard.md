@@ -54,19 +54,18 @@ learners races in slow motion.
 
 ## 2. Component model (Go)
 
-**Name & version (session 10, revised ×2): the machine is `AmmaBored-{generation}`** — pun
-deliberate ("Amma" = mother; "bored" = the captive-audience joke; target crowd loves it).
-History: first draft "MaadarBoard" rejected (one syllable from a Hindi expletive); "AmmaBoard"
-was the safe version, "AmmaBored" the chosen one.
-Generation = ISA stage, not app release: AmmaBored-1 = boot ten (days 4–5), -2 = +bytes/
+**Name & version (session 10, revised; corrected 2026-10-16): the machine is
+`AmmaBoard-{generation}`.** ("Amma" = mother; plain "Board" spelling is canonical.)
+History: first draft "MaadarBoard" rejected (one syllable from a Hindi expletive); the pun
+spelling "AmmaBored" was considered and dropped — "AmmaBoard" is the chosen name.
+Generation = ISA stage, not app release: AmmaBoard-1 = boot ten (days 4–5), -2 = +bytes/
 shifts/interrupts (day 7), -3 = +TLB/protection (day 10), onward per growth stages.
-`machine_version: "AmmaBored-N"` stamped in every trace's `runs` row. Doors announce their
+`machine_version: "AmmaBoard-N"` stamped in every trace's `runs` row. Doors announce their
 generation. Experimental "version mode" (sidequest) = an unnumbered next generation.
-Brand thread: day-12 campaign becomes "Look Amma, I made my own Blue Screen of Death" —
-or, per the name: "bored of blue screens? make your own."
-CLI binary may use a short alias (`amma`); canonical romanization AmmaBored.
+Brand thread: day-12 campaign becomes "Look Amma, I made my own Blue Screen of Death".
+CLI binary may use a short alias (`amma`); canonical romanization AmmaBoard.
 License: **Apache-2.0** for the whole project (repo + machine + chapters code).
-Future: if it takes off, FPGA kits running AmmaBored are a plausible community spin-off
+Future: if it takes off, FPGA kits running AmmaBoard are a plausible community spin-off
 (hardware=soft, tiny ISA + 32KB RAM is well within soft-core/CPLD-class territory).
 
 ```go

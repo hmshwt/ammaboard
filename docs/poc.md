@@ -67,16 +67,16 @@ Everything the rogue/nice acceptance test needs is on the machine by day 8.
   consulted as privileged routine
 - Fault plumbing: trap vector, fault register (type, vaddr, pc) — dormant from PoC
 
-## 3. PoC scope — NARROWED (session 9): motherboard first — **DONE (built in ../AmmaBored)**
+## 3. PoC scope — NARROWED (session 9): motherboard first — **DONE (this repo)**
 PoC = **motherboard + boot-ten instructions + everything dumped to a file**. Build on top later.
 Excluded: chapter engine, bubbletea UI, progress/save, rogue/nice payloads, TLB/cache/BaseLimit.
 
-**Status: all five criteria pass** (`cd ../AmmaBored && go test ./...`, plus CLI smoke):
+**Status: all five criteria pass** (`go test ./...`, plus CLI smoke):
 1. Program runs — `examples/counter.amm`: 9 words, 25 major ticks, clean halt ✓
 2. Trace complete — SQLite `.db` + `trace.txt` export; BOOT/FROZEN snapshots ✓
 3. Determinism — `TestDeterminism`: two runs, identical event streams ✓
 4. Observability — every fetch/decode/execute/bus/latch logged with (major, phase, component) ✓
-5. Pluggable — `EchoDevice` via one `Attach` in `cmd/ammabored/wiring.go`, zero edits elsewhere ✓
+5. Pluggable — `EchoDevice` via one `Attach` in `cmd/ammaboard/wiring.go`, zero edits elsewhere ✓
 
 Deviations from design docs (deliberate, PoC-only): no prev/current double-buffering (the tick
 log is the history); phases = FETCH/DECODE/EXECUTE only (the accepted 99% set, confirmed by use).

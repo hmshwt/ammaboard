@@ -2,9 +2,9 @@
 
 The AmmaBoard-1 PoC: a tiny deterministic machine simulator in Go, chapter one of a course
 that teaches how computers actually work — from punched cards to M-series — by making you
-build every piece. *(Planning docs live in `../motherboard/`.)*
+build every piece. *(Planning docs live in `docs/`.)*
 
-This PoC proves the **motherboard architecture** (`../motherboard/motherboard.md`):
+This PoC proves the **motherboard architecture** (`docs/motherboard.md`):
 
 - **Elm-like components** — each component is a plain object with a `Tick(phase)`; the
   motherboard is the broker. No goroutines, no channels, no locks: same inputs + same cycles
@@ -60,7 +60,7 @@ elsewhere).
 
 ## Status
 
-PoC. Next: phase-set confirmation, chapter engine, the TUI, and the advent calendar — see
-`../motherboard/PLANNING.md`.
+PoC. Next: chapter engine, the TUI, and the advent calendar — see `docs/PLANNING.md` and
+`docs/detailed-plan.md`.
 
 License: Apache-2.0.

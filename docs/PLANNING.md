@@ -221,7 +221,7 @@ DMA→IOMMU). Use for rest-day readings.
   feasible for Dec 2026 if content pipeline is built first; full 16 for Dec 2027.
 - Launch shape: GitHub repo (Apache-2.0 — repo, machine, and chapters code), single-binary
   releases via GitHub (self-update command), doors unlock by date; spoiler flag.
-  Machine name: **AmmaBored-{generation}** (see motherboard.md §2); day-12 campaign
+  Machine name: **AmmaBoard-{generation}** (see motherboard.md §2); day-12 campaign
   "Look Amma, I made my own Blue Screen of Death."
 - **Leaderboard / shared features: separate app later** (session 2 decision) — simple
   Cloudflare Workers deployment, decoupled from the game binary; the TUI stays offline-first,
@@ -252,14 +252,14 @@ advent players quit by day 5.
    dependent.
 5. Merch: skip.
 Real ROI = reputation compounding (talks, consulting, kernel credibility), not direct revenue.
-**Opening note ends with**: "Someday, someone will run DOOM on AmmaBored." (North star for
+**Opening note ends with**: "Someday, someone will run DOOM on AmmaBoard." (North star for
 contributors: DOOM needs interrupts, framebuffer-ish memory, `multiply`, honest cycle timing —
 the day-13–17 machine has all four. Also the FPGA-kit flag, and full circle: DOOM made
-millions of kids care about CPUs; AmmaBored explains them.)
+millions of kids care about CPUs; AmmaBoard explains them.)
 **Ad angle**: "Play the slowest DOOM ever: 1 FPT — one frame per thought." Flips perf shame
 into the feature; literally true in our UI (stepping = thinking is the throttle; the learner's
 comprehension sets the frame rate).
-**End condition**: AmmaBored stops when the community can play DOOM on it — one frame per
+**End condition**: AmmaBoard stops when the community can play DOOM on it — one frame per
 comprehension. Not downloads, not stars: a stranger, unaided, understanding the machine well
 enough to make it play. That is "done."
 **Sign-off**: "Every bit yours, everyone's invited." (Triple pun: letter-closing devotion,
@@ -298,4 +298,4 @@ candidate content for a buffer day or season 2.
 5. Source-check pass on all historical attributions before beta.
 
 ### PoC → MVP → Beta plan
-*(to be written at end of planning sessions — placeholder)*
+Written 2026-10-16: see **[detailed-plan.md](detailed-plan.md)**.
