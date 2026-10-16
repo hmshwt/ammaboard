@@ -22,12 +22,12 @@ This PoC proves the **motherboard architecture** (`../motherboard/motherboard.md
 ## Run it
 
 ```sh
-go run ./cmd/ammaboard run examples/counter.amm -o amma.db -trace trace.txt -echo
+go run ./cmd/ammaboard run examples/counter.amm -echo
 ```
 
 You'll see the final registers and memory, plus two artifacts:
 
-- `amma.db` — the full tick log (query it: `sqlite3 amma.db 'select * from events'`)
+- `ammaboard.db` — the full tick log (query it: `sqlite3 ammaboard.db 'select * from events'`)
 - `trace.txt` — the same trace, readable line by line
 
 ## The boot ten (AmmaBoard-1)

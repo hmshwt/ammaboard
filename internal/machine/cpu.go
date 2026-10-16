@@ -144,8 +144,12 @@ func (c *CPU) StateDump() string {
 		}
 	}
 	if c.haltedBy != nil {
-		s += fmt.Sprintf("fault: %s at pc=0x%04x phase=%s addr=0x%04x\n",
-			c.haltedBy.Kind, c.haltedBy.PC, c.haltedBy.Phase, c.haltedBy.Addr)
+		if c.haltedBy.Kind == "halt" {
+			s += fmt.Sprintf("halt: clean stop at pc=0x%04x phase=%s\n", c.haltedBy.PC, c.haltedBy.Phase)
+		} else {
+			s += fmt.Sprintf("fault: %s at pc=0x%04x phase=%s addr=0x%04x\n",
+				c.haltedBy.Kind, c.haltedBy.PC, c.haltedBy.Phase, c.haltedBy.Addr)
+		}
 	}
 	return s
 }

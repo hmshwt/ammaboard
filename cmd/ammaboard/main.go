@@ -4,7 +4,7 @@
 //
 // Usage:
 //
-//	ammaboard run program.amm [-o out.db] [-trace trace.txt] [-max 100000] [-echo]
+//	ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 100000] [-echo]
 //
 // The -echo flag wires an extra EchoDevice at 0x4000 — the pluggability proof
 // (zero edits anywhere else).
@@ -27,14 +27,17 @@ const (
 	ramSize        = 16 * 1024 // 16KB default by the sizing rule
 	echoBase       = 0x4000    // just past RAM: the broker routes by window order
 	entryPoint     = 0x0000
+	defaultDB      = "ammaboard.db"
+	defaultTrace   = "trace.txt"
 )
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [-o out.db] [-trace trace.txt] [-max 100000] [-echo]")
+		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 100000] [-echo]")
 		os.Exit(2)
 	}
-	var dbPath, tracePath, maxStr string
+	var dbPath, tracePath = defaultDB, defaultTrace
+	var maxStr string
 	var echo bool
 	valueFlags := map[string]*string{
 		"-o":     &dbPath,
