@@ -1,0 +1,16 @@
+; ─────────────────────────────────────────────────────────────
+; counter.amm — store 0..4 at 64..76, load the last one back.
+; Read it aloud; every line is a sentence.
+; ─────────────────────────────────────────────────────────────
+
+        add_number r1, r0, 0        ; i = 0            (r0 is always zero)
+        add_number r2, r0, 5        ; n = 5
+        add_number r3, r0, 64       ; data base = 64
+
+loop:   store_word r1, 0(r3)        ; mem[r3] = i
+        add_number r1, r1, 1        ; i++
+        subtract   r4, r2, r1       ; r4 = n - i
+        jump_if_not_equal r4, r0, loop   ; loop while n != i
+
+        load_word  r5, 0(r3)        ; r5 = mem[64] = 4 (the last store)
+        halt
