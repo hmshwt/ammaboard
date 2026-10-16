@@ -27,13 +27,23 @@ Today = 46 days out. Full 16 chapters = Dec 2027. Machine name per motherboard.m
 
 | # | Milestone | Window | Depends on |
 |---|---|---|---|
-| M1 | Plan + specs locked | by Oct 23 | — |
+| M1 | Plan + specs locked | by Oct 23 | — ✅ **done 2026-10-16** (defaults adopted → `decisions.md` D20–D23) |
 | M2 | Chapter engine + TUI shell + doors 1–2 | Oct 24 – Nov 8 | M1 |
-| M3 | ISA stage 2 + timer/interrupt controller + chapters 4/5/7/8 | Oct 27 – Nov 15 | M1, M2 (engine) |
+| M3 | ISA stage 2 + timer/interrupt controller + chapters 4/5/7/8 | Oct 27 – Nov 15 | M1, M2 (engine) — ✅ **machine portion done 2026-10-16** (chapters content remains) |
 | M4 | Day 10–11 machine: base+limit, privilege, MMU/TLB | Nov 2 – Nov 20 | M3 |
 | M5 | Rogue/nice payloads + acceptance checker | Nov 14 – Nov 24 | M2, M4 |
 | M6 | Content: primers + readings + source checks (parallel, per door) | Oct 27 – Nov 24 | door runnable |
 | M7 | Launch plumbing + hardening + **beta Dec 1** | Nov 17 – Nov 30 | M2–M6 |
+
+Status notes (2026-10-16):
+- **M1 closed early**: the four §2 decisions have adopted defaults recorded in
+  `decisions.md` D20–D23; the launch-name decision is owner-settled (AmmaBoard).
+- **M2's trace-vocabulary items landed early** with the stage-2 machine work (ALU lines,
+  PC convention, per-target latch commits, `bus_write_post` keep-decision, `-dump-full`;
+  see `decisions.md` D13–D17) — event kinds are now safe to freeze into golden fixtures.
+- **M3 machine portion done**: 10 stage-2 instructions, status register (IE, dormant
+  PRIV), timer at 0x4020, interrupt seam at the latch edge (`decisions.md` D1–D12).
+  Remaining in M3: chapters 4/5/7/8 content + the day-5 assembler exercise.
 
 Slack: ~6 days between M4/M5 end and launch. The date is hard (advent); honest slip =
 `--free` mode + days 12+ shipped as labeled locked doors ("unlocks 2027"), never broken doors.
@@ -54,10 +64,11 @@ graph LR
     M6 --> M7
 ```
 
-### M1 — Plan + specs locked (by Oct 23)
+### M1 — Plan + specs locked (by Oct 23) — ✅ DONE 2026-10-16
 Ratify this plan; close the decisions in §2 below (TLB granularity, payload header, editor
 scaffolding, launch repo). Nothing in M3/M4 may start on an open decision. **Done when**: all
-four §2 rows have a decision recorded in their home doc.
+four §2 rows have a decision recorded in their home doc. → Defaults adopted, see
+`decisions.md` D20–D23; owner-settled items noted there.
 
 ### M2 — Chapter engine + TUI shell + doors 1–2 (storefront; Oct 24 – Nov 8)
 Doors 1–2 need **zero ISA** (plugboard patch; card-deck reorder) — pure engine/UI work, so

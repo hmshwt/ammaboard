@@ -48,6 +48,31 @@ goto       r3                 ; pc = r3
 halt
 ```
 
+## Stage 2 (AmmaBoard-2)
+
+Days 7–8 hardware: bytes, shifts, bitwise ops, and interrupts — the machine grows, the
+encoding doesn't (same 32-bit word):
+
+```asm
+load_byte  r1, 3(r2)          ; zero-extended byte; no alignment needed
+store_byte r1, 3(r2)          ; low byte only
+shift_left / shift_right / shift_right_arithmetic  r1, r2, r3   ; amount = r3 & 31
+bit_and / bit_or           r1, r2, r3
+allow_interrupts / forbid_interrupts / return_from_interrupt    ; no operands
+```
+
+A timer at `0x4020` raises an interrupt line every N major ticks (`+0` = interval,
+`+4` = pending/acknowledge). Delivered lines aim pc at the trap vector `0x0008` with
+interrupts auto-forbidden; `return_from_interrupt` resumes. See it run:
+
+```sh
+go run ./cmd/ammaboard run examples/timer.amm
+```
+
+Trace highlights: every register change prints an `alu` line, latch commits name their
+target (`commit ram[0x0040] <= 0x…`), and the halt line shows both PC conventions.
+`-dump-full` prints the whole RAM instead of nonzero words.
+
 ## Tests
 
 ```sh
@@ -60,7 +85,8 @@ elsewhere).
 
 ## Status
 
-PoC. Next: chapter engine, the TUI, and the advent calendar — see `docs/PLANNING.md` and
-`docs/detailed-plan.md`.
+PoC + ISA stage 2 (bytes/shifts/interrupts, timer, trace-vocabulary fixes — see
+`docs/decisions.md`). Next: chapter engine, the TUI, and the advent calendar — see
+`docs/PLANNING.md` and `docs/detailed-plan.md`.
 
 License: Apache-2.0.

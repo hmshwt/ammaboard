@@ -57,3 +57,43 @@ func TestDecodeRefusesNonsense(t *testing.T) {
 		t.Error("opcode 0 is not a verb; should not decode")
 	}
 }
+
+// System ops are zero-operand: their fields are reserved and must be zero —
+// in the encoder AND in the decoder (a hand-rolled binary must fault too).
+func TestSystemOpsRefuseNonzeroFields(t *testing.T) {
+	ops := []Opcode{OpAllowInterrupts, OpForbidInterrupts, OpReturnFromInterrupt}
+	for _, op := range ops {
+		if _, err := Encode(op, 1, 0, 0, 0); err == nil {
+			t.Errorf("%s encode with rd!=0 should fail", op.Name())
+		}
+		if _, err := Encode(op, 0, 0, 0, 1); err == nil {
+			t.Errorf("%s encode with imm!=0 should fail", op.Name())
+		}
+		// Bypass Encode: forge a word with a nonzero reserved field.
+		forged := uint32(op)<<OpShift | 1<<RdShift
+		if _, err := Decode(forged); err == nil {
+			t.Errorf("%s decode with rd!=0 should refuse nonsense", op.Name())
+		}
+		w := MustEncode(op, 0, 0, 0, 0)
+		in, err := Decode(w)
+		if err != nil || in.Op != op {
+			t.Errorf("%s zero-operand roundtrip: %+v, %v", op.Name(), in, err)
+		}
+	}
+}
+
+// Stage-2 encodings round-trip: bytes (I-format), shifts/bitwise (R-format).
+func TestStage2RoundTrip(t *testing.T) {
+	in, err := Decode(MustEncode(OpLoadByte, 2, 3, 0, -1))
+	if err != nil || in.Op != OpLoadByte || in.Rd != 2 || in.Rs != 3 || in.Imm != -1 {
+		t.Errorf("load_byte roundtrip: %+v, %v", in, err)
+	}
+	in, err = Decode(MustEncode(OpStoreByte, 0, 4, 5, 7))
+	if err != nil || in.Op != OpStoreByte || in.Rs != 4 || in.Rt != 5 || in.Imm != 7 {
+		t.Errorf("store_byte roundtrip: %+v, %v", in, err)
+	}
+	in, err = Decode(MustEncode(OpShiftRightArithmetic, 1, 2, 3, 0))
+	if err != nil || in.Op != OpShiftRightArithmetic || in.Rd != 1 || in.Rs != 2 || in.Rt != 3 {
+		t.Errorf("sra roundtrip: %+v, %v", in, err)
+	}
+}

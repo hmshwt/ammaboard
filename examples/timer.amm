@@ -1,0 +1,27 @@
+; AmmaBoard-2, stage 2: the day-8 timer interrupt.
+; A periodic timer fires every 3 major ticks. The handler at the trap vector
+; (0x0008) counts ticks, publishes the count at 128, acknowledges the line,
+; and disarms the timer once two ticks have arrived. Main waits for the
+; count, then forbids interrupts and halts.
+        add_number r1, r0, start    ; jump over the trap vector
+        goto       r1
+handler:                            ; 0x0008 — the board aims pc here
+        add_number r5, r5, 1        ; ticks so far
+        store_word r5, 128(r0)      ; publish the count
+        add_number r6, r0, 2
+        subtract   r6, r5, r6
+        jump_if_not_equal r6, r0, ack
+        store_word r0, 0(r2)        ; two ticks: disarm (interval 0)
+ack:    store_word r0, 4(r2)        ; acknowledge the line
+        return_from_interrupt       ; back to wherever main was interrupted
+start:
+        add_number r2, r0, 16416    ; timer base 0x4020
+        add_number r3, r0, 3        ; fire every 3 major ticks
+        store_word r3, 0(r2)        ; arm
+        allow_interrupts            ; from here, a raised line can deliver
+wait:   load_word  r4, 128(r0)
+        add_number r6, r0, 2
+        subtract   r6, r4, r6
+        jump_if_not_equal r6, r0, wait
+        forbid_interrupts
+        halt

@@ -16,19 +16,23 @@ type wiring struct {
 	board *machine.Motherboard
 	ram   *machine.RAM
 	cpu   *machine.CPU
+	timer *machine.Timer
 	echo  *machine.EchoDevice // optional
 }
 
-// buildBoard wires AmmaBoard-1: RAM first (its window owns 0..16KB), then the
-// CPU, then any optional devices. Order = tick order; windows route the bus.
+// buildBoard wires AmmaBoard-2: RAM first (its window owns 0..16KB), then the
+// CPU, then the timer, then any optional devices. Order = tick order; windows
+// route the bus.
 func buildBoard(log *ticklog.Log, echo bool) *wiring {
 	w := &wiring{
-		ram: machine.NewRAM(ramBase, ramSize),
-		cpu: machine.NewCPU(entryPoint),
+		ram:   machine.NewRAM(ramBase, ramSize),
+		cpu:   machine.NewCPU(entryPoint),
+		timer: machine.NewTimer(timerBase),
 	}
 	w.board = machine.New(func(e machine.Event) { log.Add(ticklog.Event(e)) })
 	w.board.Attach(w.ram)
 	w.board.Attach(w.cpu)
+	w.board.Attach(w.timer)
 	if echo {
 		w.echo = machine.NewEchoDevice(echoBase)
 		w.board.Attach(w.echo)

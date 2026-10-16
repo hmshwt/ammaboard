@@ -70,6 +70,9 @@ func TestErrors(t *testing.T) {
 		"load_word r1, 2(r1)",           // unaligned offset is fine to ENCODE (faults at runtime)
 		"jump_if_equal r1, r2, nowhere", // unknown label
 		"add r1, r2",                    // missing operand
+		"allow_interrupts r1",           // system ops take no operands
+		"return_from_interrupt 1",       // system ops take no operands
+		"shift_left r1, r2",             // R-type ops want three registers
 	} {
 		if _, err := Assemble(bad); err == nil {
 			// Note: load_word 2(r1) assembles fine; alignment is a runtime fault.
@@ -77,6 +80,38 @@ func TestErrors(t *testing.T) {
 				t.Errorf("expected error for %q", bad)
 			}
 		}
+	}
+}
+
+// Stage-2 mnemonics encode the documented ops.
+func TestStage2Mnemonics(t *testing.T) {
+	words, err := Assemble(`
+        load_byte  r2, 3(r4)
+        store_byte r5, -1(r6)
+        shift_right_arithmetic r1, r2, r3
+        bit_or     r7, r1, r2
+        allow_interrupts
+        forbid_interrupts
+        return_from_interrupt
+        halt
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []isa.Opcode{
+		isa.OpLoadByte, isa.OpStoreByte, isa.OpShiftRightArithmetic, isa.OpBitOr,
+		isa.OpAllowInterrupts, isa.OpForbidInterrupts, isa.OpReturnFromInterrupt, isa.OpHalt,
+	}
+	for i, op := range want {
+		in, err := isa.Decode(words[i])
+		if err != nil || in.Op != op {
+			t.Errorf("word %d: got %s (%v), want %s", i, in.Op.Name(), err, op.Name())
+		}
+	}
+	// load_byte r2, 3(r4): rd=2 rs=4 imm=3.
+	in, _ := isa.Decode(words[0])
+	if in.Rd != 2 || in.Rs != 4 || in.Imm != 3 {
+		t.Errorf("load_byte fields: got %+v", in)
 	}
 }
 

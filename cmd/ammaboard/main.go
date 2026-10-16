@@ -22,10 +22,11 @@ import (
 )
 
 const (
-	machineVersion = "AmmaBoard-1"
+	machineVersion = machine.MachineVersion
 	ramBase        = 0x0000
 	ramSize        = 16 * 1024 // 16KB default by the sizing rule
 	echoBase       = 0x4000    // just past RAM: the broker routes by window order
+	timerBase      = 0x4020    // day-8 timer MMIO (interval @+0, pending/ack @+4)
 	entryPoint     = 0x0000
 	defaultDB      = "ammaboard.db"
 	defaultTrace   = "trace.txt"
@@ -33,12 +34,12 @@ const (
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 100000] [-echo]")
+		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 100000] [-echo] [-dump-full]")
 		os.Exit(2)
 	}
 	var dbPath, tracePath = defaultDB, defaultTrace
 	var maxStr string
-	var echo bool
+	var echo, dumpFull bool
 	valueFlags := map[string]*string{
 		"-o":     &dbPath,
 		"-trace": &tracePath,
@@ -63,6 +64,8 @@ func main() {
 		switch a {
 		case "-echo":
 			echo = true
+		case "-dump-full":
+			dumpFull = true
 		default:
 			if strings.HasPrefix(a, "-") {
 				fmt.Fprintf(os.Stderr, "ammaboard: unknown flag %q\n", a)
@@ -84,13 +87,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [flags]")
 		os.Exit(2)
 	}
-	if err := run(pos[0], dbPath, tracePath, maxMajors, echo); err != nil {
+	if err := run(pos[0], dbPath, tracePath, maxMajors, echo, dumpFull); err != nil {
 		fmt.Fprintln(os.Stderr, "ammaboard:", err)
 		os.Exit(1)
 	}
 }
 
-func run(srcPath, dbPath, tracePath string, maxMajors int, echo bool) error {
+func run(srcPath, dbPath, tracePath string, maxMajors int, echo, dumpFull bool) error {
 	src, err := os.ReadFile(srcPath)
 	if err != nil {
 		return err
@@ -112,11 +115,11 @@ func run(srcPath, dbPath, tracePath string, maxMajors int, echo bool) error {
 		return err
 	}
 
-	if err := log.Snapshot(0, "BOOT", "initial", board.StateString()); err != nil {
+	if err := log.Snapshot(0, "BOOT", "initial", board.StateString(dumpFull)); err != nil {
 		return err
 	}
 	board.Run(maxMajors)
-	if err := log.Snapshot(board.Major, "FROZEN", "final", board.StateString()); err != nil {
+	if err := log.Snapshot(board.Major, "FROZEN", "final", board.StateString(dumpFull)); err != nil {
 		return err
 	}
 	if err := log.Flush(); err != nil { // persist events before reading them back
@@ -127,7 +130,7 @@ func run(srcPath, dbPath, tracePath string, maxMajors int, echo bool) error {
 	fmt.Printf("assembled %d words | ran %d major ticks | stopped: %s\n",
 		len(words), board.Major, haltSummary(f))
 	fmt.Println(strings.Repeat("─", 56))
-	fmt.Print(board.StateString())
+	fmt.Print(board.StateString(dumpFull))
 	fmt.Println(strings.Repeat("─", 56))
 	fmt.Printf("trace: %s + %s\n", dbPath, tracePath)
 	return exportText(dbPath, tracePath)

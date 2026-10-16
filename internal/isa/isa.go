@@ -1,5 +1,5 @@
-// Package isa defines the AmmaBoard boot-ten instruction set: opcodes, encodings,
-// and decode helpers. Encoding is fixed 32-bit words:
+// Package isa defines the AmmaBoard ISA: opcodes, encodings, and decode
+// helpers. Encoding is fixed 32-bit words:
 //
 //	[ opcode:5 | rd:3 | rs:3 | rt:3 | immediate:18 ]
 //
@@ -12,7 +12,8 @@ import "fmt"
 // Opcode is a 5-bit verb.
 type Opcode uint8
 
-// The boot ten (AmmaBoard-1). Names are plain-language; see PLANNING.md.
+// Stage 1 "boot ten" (AmmaBoard-1) and stage 2 (AmmaBoard-2). Names are
+// plain-language; opcode order follows poc.md §1. See PLANNING.md.
 const (
 	OpLoadWord       Opcode = iota + 1 // load_word  rd, imm(rs)
 	OpStoreWord                        // store_word rt, imm(rs)
@@ -24,19 +25,48 @@ const (
 	OpCall                             // call imm   (return address -> r7)
 	OpGoto                             // goto rs    (pc = r[rs])
 	OpHalt                             // halt
+	// Stage 2 (days 7–8): bytes, shifts, bitwise, interrupts.
+	OpLoadByte             // load_byte  rd, imm(rs)   (zero-extended)
+	OpStoreByte            // store_byte rt, imm(rs)   (low byte)
+	OpShiftLeft            // shift_left            rd, rs, rt (amount = rt&31)
+	OpShiftRight           // shift_right           rd, rs, rt (logical)
+	OpShiftRightArithmetic // shift_right_arithmetic rd, rs, rt
+	OpBitAnd               // bit_and rd, rs, rt
+	OpBitOr                // bit_or  rd, rs, rt
+	OpAllowInterrupts      // allow_interrupts        (zero-operand)
+	OpForbidInterrupts     // forbid_interrupts       (zero-operand)
+	OpReturnFromInterrupt  // return_from_interrupt   (zero-operand)
 )
 
 var names = map[Opcode]string{
-	OpLoadWord:       "load_word",
-	OpStoreWord:      "store_word",
-	OpAdd:            "add",
-	OpAddNumber:      "add_number",
-	OpSubtract:       "subtract",
-	OpJumpIfEqual:    "jump_if_equal",
-	OpJumpIfNotEqual: "jump_if_not_equal",
-	OpCall:           "call",
-	OpGoto:           "goto",
-	OpHalt:           "halt",
+	OpLoadWord:             "load_word",
+	OpStoreWord:            "store_word",
+	OpAdd:                  "add",
+	OpAddNumber:            "add_number",
+	OpSubtract:             "subtract",
+	OpJumpIfEqual:          "jump_if_equal",
+	OpJumpIfNotEqual:       "jump_if_not_equal",
+	OpCall:                 "call",
+	OpGoto:                 "goto",
+	OpHalt:                 "halt",
+	OpLoadByte:             "load_byte",
+	OpStoreByte:            "store_byte",
+	OpShiftLeft:            "shift_left",
+	OpShiftRight:           "shift_right",
+	OpShiftRightArithmetic: "shift_right_arithmetic",
+	OpBitAnd:               "bit_and",
+	OpBitOr:                "bit_or",
+	OpAllowInterrupts:      "allow_interrupts",
+	OpForbidInterrupts:     "forbid_interrupts",
+	OpReturnFromInterrupt:  "return_from_interrupt",
+}
+
+// zeroOperandOps take no fields: rd/rs/rt/imm are reserved and must be zero —
+// the machine refuses nonsense (the documented teachable fork).
+var zeroOperandOps = map[Opcode]bool{
+	OpAllowInterrupts:     true,
+	OpForbidInterrupts:    true,
+	OpReturnFromInterrupt: true,
 }
 
 // Name returns the mnemonic for an opcode.
@@ -72,6 +102,9 @@ func Encode(op Opcode, rd, rs, rt uint8, imm int32) (uint32, error) {
 	}
 	if rd > RegMask || rs > RegMask || rt > RegMask {
 		return 0, fmt.Errorf("register number out of range")
+	}
+	if zeroOperandOps[op] && (rd != 0 || rs != 0 || rt != 0 || imm != 0) {
+		return 0, fmt.Errorf("%s takes no operands: reserved fields must be zero", op.Name())
 	}
 	w := uint32(op&OpMask)<<OpShift |
 		uint32(rd&RegMask)<<RdShift |
@@ -109,6 +142,11 @@ func Decode(word uint32) (Instruction, error) {
 	// 18..17 above the immediate belong to fields, so the only illegal
 	// configuration is an opcode whose top bits overflow the 5-bit space —
 	// already covered. Imm is always 18 bits; nothing is reserved.
+	// Zero-operand (system) ops are the exception: their fields ARE reserved
+	// and must be zero.
+	if zeroOperandOps[op] && (in.Rd != 0 || in.Rs != 0 || in.Rt != 0 || uint32(in.Imm)&ImmMask != 0) {
+		return Instruction{}, fmt.Errorf("%s: reserved fields must be zero in word 0x%08x", op.Name(), word)
+	}
 	return in, nil
 }
 

@@ -16,14 +16,20 @@ import (
 // Operand grammar (destination-first):
 //
 //	add        rd, rs, rt
-//	add_number rd, rs, imm
+//	add_number rd, rs, imm|label     (label = absolute byte address)
 //	subtract   rd, rs, rt
-//	load_word  rd, imm(rs)
+//	load_word  rd, imm(rs)           (word-aligned at runtime)
 //	store_word rt, imm(rs)
+//	load_byte  rd, imm(rs)           (zero-extended; no alignment)
+//	store_byte rt, imm(rs)           (low byte; no alignment)
+//	shift_left shift_right shift_right_arithmetic   rd, rs, rt  (amount = rt&31)
+//	bit_and    rd, rs, rt
+//	bit_or     rd, rs, rt
 //	jump_if_equal   rs, rt, label|imm
 //	jump_if_not_equal rs, rt, label|imm
 //	call       label|imm          (return address -> r7)
 //	goto       rs
+//	allow_interrupts / forbid_interrupts / return_from_interrupt   (no operands)
 //	halt
 func Assemble(src string) ([]uint32, error) {
 	type line struct {
@@ -190,6 +196,49 @@ func encodeLine(t string, labels map[string]int, here int) (uint32, error) {
 			return 0, err
 		}
 		return isa.MustEncode(isa.OpLoadWord, rd, base, 0, off), nil
+
+	case "load_byte":
+		rd, e1 := reg(must(args, 0))
+		base, off, e2 := memOperand(must(args, 1), labels)
+		if err := firstErr(e1, e2); err != nil {
+			return 0, err
+		}
+		return isa.MustEncode(isa.OpLoadByte, rd, base, 0, off), nil
+
+	case "store_byte":
+		rt, e1 := reg(must(args, 0))
+		base, off, e2 := memOperand(must(args, 1), labels)
+		if err := firstErr(e1, e2); err != nil {
+			return 0, err
+		}
+		return isa.MustEncode(isa.OpStoreByte, 0, base, rt, off), nil
+
+	case "shift_left", "shift_right", "shift_right_arithmetic", "bit_and", "bit_or":
+		r1, e1 := reg(must(args, 0))
+		r2, e2 := reg(must(args, 1))
+		r3, e3 := reg(must(args, 2))
+		if err := firstErr(e1, e2, e3); err != nil {
+			return 0, err
+		}
+		op := map[string]isa.Opcode{
+			"shift_left":             isa.OpShiftLeft,
+			"shift_right":            isa.OpShiftRight,
+			"shift_right_arithmetic": isa.OpShiftRightArithmetic,
+			"bit_and":                isa.OpBitAnd,
+			"bit_or":                 isa.OpBitOr,
+		}[mnem]
+		return isa.MustEncode(op, r1, r2, r3, 0), nil
+
+	case "allow_interrupts", "forbid_interrupts", "return_from_interrupt":
+		if len(args) != 0 {
+			return 0, fmt.Errorf("%s takes no operands", mnem)
+		}
+		op := map[string]isa.Opcode{
+			"allow_interrupts":      isa.OpAllowInterrupts,
+			"forbid_interrupts":     isa.OpForbidInterrupts,
+			"return_from_interrupt": isa.OpReturnFromInterrupt,
+		}[mnem]
+		return isa.MustEncode(op, 0, 0, 0, 0), nil
 
 	case "store_word":
 		rt, e1 := reg(must(args, 0))

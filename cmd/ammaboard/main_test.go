@@ -24,7 +24,7 @@ func TestRunEndToEnd(t *testing.T) {
 	if err := os.WriteFile(src, []byte(program), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(src, db, trace, 1000, false); err != nil {
+	if err := run(src, db, trace, 1000, false, false); err != nil {
 		t.Fatal(err)
 	}
 	tb, err := os.ReadFile(trace)
@@ -50,7 +50,7 @@ func TestRunWithEchoDevice(t *testing.T) {
 	if err := os.WriteFile(src, []byte(program), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(src, db, trace, 1000, true); err != nil {
+	if err := run(src, db, trace, 1000, true, false); err != nil {
 		t.Fatal(err)
 	}
 	// Same program, same result — the extra device changed nothing else.
