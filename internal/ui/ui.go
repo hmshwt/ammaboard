@@ -128,7 +128,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.input.SetWidth(min(msg.Width-4, 80))
+		m.input.SetWidth(min(msg.Width-8, 120))
 		return m, nil
 
 	case frameMsg:

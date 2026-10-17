@@ -106,3 +106,11 @@ golden-trace fixtures freeze the event vocabulary — flag objections before the
   the focused pane, `g/G` ends, `f` re-follows (pc / newest events); follow is the
   default and resumes on reset. Keyhints moved into the top bar (the shell owns
   the bottom 3 lines); the program name shows the basename, not the full path.
+- **D39 — keyhints live at the bottom; the shell is boxed (v1.2).** Supersedes
+  D38's bar placement: the top bar carries status only; all shortcut key
+  information sits on the last frame line; the shell (prompt + its 2 most recent
+  replies) sits in a full-width rectangle whose border turns accent-colored when
+  the shell is focused. Bottom block = 6 lines, so panes = height − 7 and the
+  minimum height is now 28 (`minWidth` stays 141). Also recorded here: `esc`
+  unwinds one level at a time — help overlay → main view, focused shell → panes;
+  esc with nothing open is a no-op.

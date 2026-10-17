@@ -26,7 +26,7 @@ import (
 
 const (
 	minWidth  = 141
-	minHeight = 26
+	minHeight = 28
 
 	leftW  = 44
 	rightW = 54 // tick log gets the wider column; the machine pane gives up 10
@@ -43,6 +43,7 @@ var (
 	cBarText = lipgloss.Color("#e6edf3")
 
 	stTop    = lipgloss.NewStyle().Background(cBar).Foreground(cBarText)
+	stBottom = lipgloss.NewStyle().Foreground(cDim)
 	stTitle  = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	stDim    = lipgloss.NewStyle().Foreground(cDim)
 	stFault  = lipgloss.NewStyle().Foreground(cRed)
@@ -87,9 +88,9 @@ func (m Model) View() tea.View {
 	return v
 }
 
-// renderBody: status bar / three equal panes / 3-line shell.
+// renderBody: status bar / three equal panes / boxed shell + keyhints.
 func (m Model) renderBody() string {
-	inner := m.height - 6 // minus top bar (1), shell (3), pane borders (2)
+	inner := m.height - 9 // top bar (1) + bottom block (6) + pane borders (2)
 
 	left := m.renderPane(0, leftW, inner, plain("program"),
 		nil, m.programVisible(inner-1, m.scroll[0]))
@@ -99,7 +100,7 @@ func (m Model) renderBody() string {
 		m.numbersHeader(), m.logVisible(inner-7, m.scroll[2])) // header is 6 lines
 
 	panes := lipgloss.JoinHorizontal(lipgloss.Top, left, center, right)
-	return lipgloss.JoinVertical(lipgloss.Left, m.topBar(), panes, m.shellBlock())
+	return lipgloss.JoinVertical(lipgloss.Left, m.topBar(), panes, m.renderBottom())
 }
 
 // renderPane boxes one pane: title + fixed header + scroll window, padded or
@@ -272,30 +273,31 @@ func (m Model) logAll() []line {
 	return out
 }
 
-// topBar carries status on the left and keyhints on the right — there is no
-// separate keyhint row (the shell owns the bottom 3 lines).
+// topBar carries the run status; all keyhints live at the bottom.
 func (m Model) topBar() string {
-	left := fmt.Sprintf(" AmmaBoard-2 · %s · major %d · %s · ×%d ",
-		m.name, m.board.Major, m.runState(), m.speed)
-	keys := " tab focus · space run/pause · s step · j/k scroll · f follow · : shell · ? help · q quit "
-	avail := m.width - len(left) - len(keys)
-	if avail < 0 {
-		keys = truncate(keys, max(0, m.width-len(left)))
-		avail = 0
-	}
-	return stTop.Width(m.width).Render(left + strings.Repeat(" ", avail) + keys)
+	return stTop.Width(m.width).Render(fmt.Sprintf(" AmmaBoard-2 · %s · major %d · %s · ×%d ",
+		m.name, m.board.Major, m.runState(), m.speed))
 }
 
-// shellBlock is exactly 3 lines: the prompt plus the two most recent replies.
-func (m Model) shellBlock() string {
-	lines := []string{m.input.View()}
+// renderBottom is the shell area: a boxed prompt with its recent replies, and
+// the keyhints line under it. The box border lights up when the shell is
+// focused — the same accent the focused pane gets.
+func (m Model) renderBottom() string {
+	st := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).
+		BorderForeground(cDim).Width(m.width - 2)
+	if m.input.Focused() {
+		st = st.BorderForeground(cAccent)
+	}
+	rows := []string{m.input.View()}
 	for _, o := range m.shellOut[max(0, len(m.shellOut)-2):] {
-		lines = append(lines, stDim.Render("  "+o))
+		rows = append(rows, stDim.Render("  "+o))
 	}
-	for len(lines) < 3 {
-		lines = append(lines, "")
+	for len(rows) < 3 {
+		rows = append(rows, "")
 	}
-	return strings.Join(lines[:3], "\n")
+	box := st.Render(strings.Join(rows[:3], "\n"))
+	hints := " tab focus · space run/pause · s step · j/k scroll · f follow · : shell · ? help · esc back · q quit"
+	return lipgloss.JoinVertical(lipgloss.Left, box, stBottom.Render(hints))
 }
 
 // renderHelp replaces the panes with the help modal (same frame, other body).
@@ -314,11 +316,11 @@ func (m Model) renderHelp() string {
   q                 quit
 
   shell: run · step [n] · reset · speed n · quit · help`
-	box := lipgloss.NewStyle().Width(m.width-4).Height(m.height-6).
+	box := lipgloss.NewStyle().Width(m.width).Height(m.height-7).
 		AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).
 		Padding(0, 2).Render(stHelp.Render(help))
 
-	return lipgloss.JoinVertical(lipgloss.Left, m.topBar(), box, m.shellBlock())
+	return lipgloss.JoinVertical(lipgloss.Left, m.topBar(), box, m.renderBottom())
 }
 
 // padRight pads a plain string to exactly w columns so pane borders align and

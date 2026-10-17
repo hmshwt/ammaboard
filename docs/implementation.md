@@ -80,7 +80,7 @@ ammaboard tui [program.amm]
 - Default wiring: RAM 16KB at 0x0000, timer at 0x4020, entry 0x0000.
 - `run` is the batch path: full SQLite log + text export + verdict (see above).
 - `tui` is the interactive path (docs/ui.md): three panes + shell; no file = built-in
-  counter demo. Needs ≥141×26; speed = major ticks per frame (default ×1).
+  counter demo. Needs ≥141×28; speed = major ticks per frame (default ×1).
 - `-max N`: cycle cap. Default 10000 (~1s worst case including log + export — a runaway
   fails fast and cheap). `0` = uncapped; negatives rejected.
 - `-echo`: wires an echo device at 0x4000. `-dump-full`: print every RAM word, not the

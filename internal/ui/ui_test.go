@@ -334,25 +334,35 @@ func TestScrollKeysAndFollow(t *testing.T) {
 }
 
 // TestPaneHeightsEqualAndFillFrame locks the layout contract: exactly 1 line
-// on top, 3 at the bottom, and three panes of identical height between —
-// every pane's border corners share the same rows.
+// on top, a 6-line bottom block (boxed shell + keyhints), and three panes of
+// identical height between — every pane's border corners share the same rows.
 func TestPaneHeightsEqualAndFillFrame(t *testing.T) {
 	m := newTestModel(t, longProgram(40))
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 150, Height: 30})
 	m = next.(Model)
 	rows := strings.Split(m.View().Content, "\n")
 	if len(rows) != 30 {
-		t.Fatalf("frame is %d rows, want exactly 30 (1 status + 26 panes + 3 shell)", len(rows))
+		t.Fatalf("frame is %d rows, want exactly 30 (1 status + 23 panes + 6 bottom)", len(rows))
 	}
 	for _, c := range []struct {
 		row   int
 		glyph string
 	}{
-		{1, "┌"}, {26, "└"},
+		{1, "┌"}, {23, "└"},
 	} {
 		if n := strings.Count(rows[c.row], c.glyph); n != 3 {
 			t.Errorf("row %d has %d %q corners, want 3 (panes must share top and bottom rows)", c.row, n, c.glyph)
 		}
+	}
+	// The shell box sits right under the panes; the keyhints close the frame.
+	if n := strings.Count(rows[24], "┌"); n != 1 {
+		t.Errorf("row 24 should open the shell box, found %d corners", n)
+	}
+	if !strings.Contains(rows[29], "q quit") {
+		t.Errorf("bottom line should carry the keyhints:\n%s", rows[29])
+	}
+	if strings.Contains(rows[0], "tab focus") {
+		t.Error("top bar must not carry keyhints anymore")
 	}
 }
 

@@ -3,13 +3,16 @@
 Stack: `bubbletea/v2` + `lipgloss/v2` + `bubbles/v2` (ultraviolet arrives transitively
 via the Charm stack — never a direct dependency). The UI is the only layer issuing Cmds.
 
-**Status: v1.1 shipped** — three equal-height panes filling the frame (1 status line
-above, 3 shell lines below), each pane = fixed header + scrollable body: program
-(disassembly), machine (CPU view fixed, memory scrollable), numbers (stats fixed,
-tick log scrollable, one blank line between major ticks). Scrolling: `j/k` or arrows
-on the focused pane, `g/G` top/bottom, `f` re-follows (pc / newest events; auto-follow
-while running). The tracked instruction is white on dark green — a highlighted line,
-not a pointer. `ammaboard tui [file.amm]` (no file = built-in counter demo). Deferred:
+**Status: v1.1 shipped** — the frame is 1 status line on top, three equal-height panes,
+and a 6-line bottom block: a rectangle around the shell (prompt + last 2 replies; the
+box border lights up when the shell is focused) with the keyhints line under it. Each
+pane = fixed header + scrollable body: program (disassembly), machine (CPU view fixed,
+memory scrollable), numbers (stats fixed, tick log scrollable, one blank line between
+major ticks). Scrolling: `j/k` or arrows on the focused pane, `g/G` top/bottom, `f`
+re-follows (pc / newest events; auto-follow while running). `esc` unwinds one level
+(help → main view; focused shell → panes). The tracked instruction is white on dark
+green — a highlighted line, not a pointer. Needs ≥141×28.
+`ammaboard tui [file.amm]` (no file = built-in counter demo). Deferred:
 Blue Screen overlay (faults currently show in the state line + red log lines; the CLI
 renders the full panel), hex/asm toggle, timeline view, editor, mouse.
 
