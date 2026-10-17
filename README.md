@@ -73,6 +73,15 @@ Trace highlights: every register change prints an `alu` line, latch commits name
 target (`commit ram[0x0040] <= 0x…`), and the halt line shows both PC conventions.
 `-dump-full` prints the whole RAM instead of nonzero words.
 
+## When it goes wrong: the Blue Screen
+
+An improper halt — unknown opcode, unaligned word access, an address nothing owns, a
+stray `return_from_interrupt` — freezes the machine and prints the Blue Screen: the
+fault explained in plain language, the offending instruction disassembled, every
+register and the memory around the faulting address, the last events before the stop,
+and a pointer into `trace.txt`. See `examples/bsod.amm` for a one-store crash. The
+panel is also frozen into the `.db` as a `bluescreen` snapshot — a fault is data.
+
 ## Tests
 
 ```sh

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -70,5 +71,50 @@ func TestExportDeterministicAcrossRuns(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "a.db")); err != nil {
 		t.Error("db file should exist")
+	}
+}
+
+// The trace is the human-readable surface: legend, column header, one
+// indented block per clock cycle, and a plain-language summary per cycle.
+func TestExportReadableFormat(t *testing.T) {
+	dir := t.TempDir()
+	log, err := Open(filepath.Join(dir, "t.db"), "AmmaBoard-2", "poc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Add(Event{Major: 1, Component: "board", Kind: "major"})
+	log.Add(Event{Major: 1, Phase: "FETCH", Component: "cpu", Kind: "fetch", Detail: "pc=0x0000"})
+	log.Add(Event{Major: 1, Phase: "DECODE", Component: "cpu", Kind: "decode", Detail: "add_number rd=r1 rs=r0 rt=r0 imm=0"})
+	log.Add(Event{Major: 1, Phase: "EXECUTE", Component: "cpu", Kind: "alu", Detail: "r1 <= 0 + 0 = 0 (was 0)"})
+	log.Add(Event{Major: 1, Component: "board", Kind: "latch", Detail: "end of major tick"})
+	log.Add(Event{Major: 2, Component: "board", Kind: "major"})
+	log.Add(Event{Major: 2, Phase: "EXECUTE", Component: "cpu", Kind: "halt", Detail: "clean stop at pc=0x0000 (next fetch 0x0004)"})
+	log.Close()
+
+	var out bytes.Buffer
+	if err := Export(filepath.Join(dir, "t.db"), &out); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	for _, want := range []string{
+		"# AmmaBoard-2 trace",
+		"; cycle 1 — add_number: register_1 was 0, now is 0",
+		strings.Repeat("-", 60),
+		"       1 FETCH    cpu    fetch    pc=0x0000",
+		"       1 EXECUTE  cpu    alu      r1 <= 0 + 0 = 0",
+		"; cycle 2 — clean stop at program counter 0x0000 (next fetch 0x0004)",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("trace export missing %q\n%s", want, s)
+		}
+	}
+	// The comment announces the cycle before its events; the events are indented.
+	comment := strings.Index(s, "; cycle 1")
+	events := strings.Index(s, "1 FETCH")
+	if comment < 0 || events < 0 || comment > events {
+		t.Errorf("cycle comment must precede its indented events:\n%s", s)
+	}
+	if !strings.Contains(s, "\n       1 FETCH") {
+		t.Error("cycle contents must be indented under their dashed rule")
 	}
 }

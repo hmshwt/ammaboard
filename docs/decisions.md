@@ -104,3 +104,35 @@ change event kinds and must precede any golden fixture.
 - **D22 — Exercise editor scaffolding:** plain text input + step/run, no syntax frills.
 - **D23 — Launch/repo name:** AmmaBoard (settled by owner 2026-10-16 — "ammaboard was
   the chosen one"; motherboard.md §2 corrected accordingly).
+- **D24 — trace.txt rendering v2 (owner-requested, iterated twice):** each cycle opens
+  with a comment line — its number and what it accomplishes
+  (`; cycle 21 — subtract: r6 <= 2 - 2 = 0`; interrupt delivery outranks the
+  instruction) — followed by a dashed rule and the cycle's indented events. The
+  `major` / `end of major tick` bookkeeping rows are not rendered: the comment + rule
+  are the clock boundary. Legend header on top; column header dropped (columns are
+  named in the legend). Rendering only in `ticklog.Export` — the events table,
+  golden-trace diffs, and the determinism test are untouched. Supersedes the
+  poc-disccussion.md §5 recommendation against indentation (owner's call).
+- **D25 — comments expand shorthand for onboarding (owner-requested):** cycle comments
+  use full terms — `r0..r7` → `register_0..register_7`, `pc` → `program counter`,
+  `mem[` → `memory[`, `ie=1/0` → `interrupts enabled/disabled` — applied only in the
+  comment/prose layer; event rows stay compact so the machine record stays terse and
+  greppable. Legend states the convention.
+- **D26 — was/now visibility (owner principle): "the player gets complete visibility,
+  even when the machine misbehaves."** Every state change is recorded with its old
+  value at the source — the machine logs `… (was N)` on alu/load effects and
+  `commit … (was 0x…)` on latch commits (broker reads the old value before writing) —
+  and the cycle comment phrases it humanly: `subtract: register_6 was 2, now is
+  4294967295 (= -1 signed, 0xffffffff)`. Numbers show every interpretation when they
+  diverge (unsigned decimal, signed, hex); loads keep "was 0, now is 0" even when
+  nothing changed, because a no-op read is also a fact. Event kinds unchanged; detail
+  strings gained the `(was …)` suffix — golden fixtures must be written from this
+  shape onward.
+- **D27 — Blue Screen on improper halt (owner request; ui.md §9 in the CLI):** any halt
+  that is not a clean stop renders the full panel — plain-language explanation per fault
+  kind, the disassembled offending word, complete registers/status, a memory window
+  around the faulting address (marked to the word), the board's address windows, and the
+  last 8 log events with the fault marked. The panel is frozen into the log as a
+  `bluescreen` snapshot row; fetch faults now also log a `fault` event so the chain is
+  complete. The dead `CPU.Fault` field was removed; fault words travel in `Fault.Word`
+  for every fault kind. Clean halts never blue-screen.

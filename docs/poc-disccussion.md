@@ -116,9 +116,11 @@ wrong state.
 - `--dump-full` RAM flag: fine, CLI polish, M2.
 - "echo empty line should show what was last written": self-contradictory — empty means
   never written. Best available: `echo@0x4000: empty (mailbox, last value none)`. Cosmetic.
-- Tick-number indentation: reject for `trace.txt`. It is a machine-diffable rendering of
-  the SQLite event table (golden traces diff `SELECT * FROM events`); ragged first columns
-  hurt that. Tick grouping belongs in the TUI tick-log pane, where ui.md already plans it.
+- Tick-number indentation: originally rejected for `trace.txt` (machine-diffable
+  export; tick grouping belongs in the TUI per ui.md). **Superseded by owner decision
+  2026-10-16** — the export now renders cycle-grouped, indented blocks with per-cycle
+  summary comments (`decisions.md` D24); the events table stays untouched, so the
+  diffing argument no longer applies.
 - Subtract-then-branch explainer for day 4–5: agreed, one sentence in the primer. It's a
   content note, not a code note — there is no `cmp` because flags were deliberately not
   modeled; say that.

@@ -130,10 +130,34 @@ func run(srcPath, dbPath, tracePath string, maxMajors int, echo, dumpFull bool) 
 	fmt.Printf("assembled %d words | ran %d major ticks | stopped: %s\n",
 		len(words), board.Major, haltSummary(f))
 	fmt.Println(strings.Repeat("─", 56))
-	fmt.Print(board.StateString(dumpFull))
+	if f.Kind != "halt" {
+		// Not a clean stop: the kernel explains itself. The panel is also
+		// frozen into the log as its own snapshot — a fault is data.
+		bs := machine.BlueScreen(cpu, board, ram, readEvents(dbPath))
+		fmt.Print(bs)
+		if err := log.Snapshot(board.Major, string(f.Phase), "bluescreen", bs); err != nil {
+			return err
+		}
+	} else {
+		fmt.Print(board.StateString(dumpFull))
+	}
 	fmt.Println(strings.Repeat("─", 56))
 	fmt.Printf("trace: %s + %s\n", dbPath, tracePath)
 	return exportText(dbPath, tracePath)
+}
+
+// readEvents converts the persisted event stream into machine events for the
+// Blue Screen cause chain. Best effort: an empty chain beats a failed render.
+func readEvents(dbPath string) []machine.Event {
+	te, err := ticklog.EventsReadback(dbPath)
+	if err != nil {
+		return nil
+	}
+	out := make([]machine.Event, len(te))
+	for i, e := range te {
+		out[i] = machine.Event{Major: e.Major, Phase: e.Phase, Component: e.Component, Kind: e.Kind, Detail: e.Detail}
+	}
+	return out
 }
 
 func haltSummary(f machine.Fault) string {

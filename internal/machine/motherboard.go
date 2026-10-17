@@ -202,15 +202,25 @@ func (m *Motherboard) commit(w pendingWrite) {
 		switch {
 		case w.size == 1:
 			if bw, ok := m.components[i].(ByteWriter); ok {
+				detail := fmt.Sprintf("commit %s[0x%04x] <= byte 0x%02x", name, w.addr, uint8(w.val))
+				if br, ok := m.components[i].(ByteReader); ok {
+					if old, st := br.BusReadByte(w.addr); st == BusOK {
+						detail += fmt.Sprintf(" (was 0x%02x)", old)
+					}
+				}
 				bw.BusWriteByte(w.addr, uint8(w.val))
 				m.sink(Event{Major: m.Major, Phase: string(m.curPhase), Component: "board",
-					Kind: "latch", Detail: fmt.Sprintf("commit %s[0x%04x] <= byte 0x%02x", name, w.addr, uint8(w.val))})
+					Kind: "latch", Detail: detail})
 			}
 		default:
 			if wr, ok := m.components[i].(Writer); ok {
+				detail := fmt.Sprintf("commit %s[0x%04x] <= 0x%08x", name, w.addr, w.val)
+				if old, st := r.Read(w.addr); st == BusOK {
+					detail += fmt.Sprintf(" (was 0x%08x)", old)
+				}
 				wr.Write(w.addr, w.val)
 				m.sink(Event{Major: m.Major, Phase: string(m.curPhase), Component: "board",
-					Kind: "latch", Detail: fmt.Sprintf("commit %s[0x%04x] <= 0x%08x", name, w.addr, w.val)})
+					Kind: "latch", Detail: detail})
 			}
 		}
 		return
@@ -369,6 +379,19 @@ func (m *Motherboard) StateString(verbose bool) string {
 		}
 	}
 	return b.String()
+}
+
+// DescribeWindows lists every address window on the board — the map a player
+// needs when a faulting address leads nowhere.
+func (m *Motherboard) DescribeWindows() string {
+	s := ""
+	for i, c := range m.components {
+		if r := m.readers[i]; r != nil {
+			base, size := r.Window()
+			s += fmt.Sprintf("  %-6s 0x%04x..0x%04x (%d bytes)\n", c.Name(), base, base+size, size)
+		}
+	}
+	return s
 }
 
 func (m *Motherboard) describeHalt() string {

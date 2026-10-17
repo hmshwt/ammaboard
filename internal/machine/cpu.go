@@ -27,7 +27,6 @@ type CPU struct {
 	PC     uint32 // invariant: always the address of the NEXT fetch
 	Halted bool
 	Status uint32
-	Fault  *isa.Instruction // decoded word of the instruction in flight, if any
 
 	haltedBy  *Fault
 	fetchWord uint32
@@ -82,6 +81,7 @@ func (c *CPU) Tick(phase Phase, env Env) {
 		env.Logf("fetch", "pc=0x%04x", c.PC)
 		w, st := env.ReadBus(c.PC)
 		if st != BusOK {
+			env.Logf("fault", "fetch from 0x%04x: %s", c.PC, st)
 			halt(Fault{Kind: "bus_" + string(st), Addr: c.PC, PC: c.PC, Phase: phase})
 			return
 		}
@@ -111,39 +111,47 @@ func (c *CPU) Tick(phase Phase, env Env) {
 
 		// ---- ALU: every state change gets a visible EXECUTE line ----
 		case isa.OpAdd:
+			was := c.Regs[in.Rd]
 			v := c.Regs[in.Rs] + c.Regs[in.Rt]
-			env.Logf("alu", "r%d <= %d + %d = %d", in.Rd, c.Regs[in.Rs], c.Regs[in.Rt], v)
+			env.Logf("alu", "r%d <= %d + %d = %d (was %d)", in.Rd, c.Regs[in.Rs], c.Regs[in.Rt], v, was)
 			c.writeReg(in.Rd, v)
 		case isa.OpAddNumber:
+			was := c.Regs[in.Rd]
 			v := c.Regs[in.Rs] + uint32(in.Imm)
-			env.Logf("alu", "r%d <= %d + %d = %d", in.Rd, c.Regs[in.Rs], in.Imm, v)
+			env.Logf("alu", "r%d <= %d + %d = %d (was %d)", in.Rd, c.Regs[in.Rs], in.Imm, v, was)
 			c.writeReg(in.Rd, v)
 		case isa.OpSubtract:
+			was := c.Regs[in.Rd]
 			v := c.Regs[in.Rs] - c.Regs[in.Rt]
-			env.Logf("alu", "r%d <= %d - %d = %d", in.Rd, c.Regs[in.Rs], c.Regs[in.Rt], v)
+			env.Logf("alu", "r%d <= %d - %d = %d (was %d)", in.Rd, c.Regs[in.Rs], c.Regs[in.Rt], v, was)
 			c.writeReg(in.Rd, v)
 		case isa.OpBitAnd:
+			was := c.Regs[in.Rd]
 			v := c.Regs[in.Rs] & c.Regs[in.Rt]
-			env.Logf("alu", "r%d <= %d & %d = %d", in.Rd, c.Regs[in.Rs], c.Regs[in.Rt], v)
+			env.Logf("alu", "r%d <= %d & %d = %d (was %d)", in.Rd, c.Regs[in.Rs], c.Regs[in.Rt], v, was)
 			c.writeReg(in.Rd, v)
 		case isa.OpBitOr:
+			was := c.Regs[in.Rd]
 			v := c.Regs[in.Rs] | c.Regs[in.Rt]
-			env.Logf("alu", "r%d <= %d | %d = %d", in.Rd, c.Regs[in.Rs], c.Regs[in.Rt], v)
+			env.Logf("alu", "r%d <= %d | %d = %d (was %d)", in.Rd, c.Regs[in.Rs], c.Regs[in.Rt], v, was)
 			c.writeReg(in.Rd, v)
 		case isa.OpShiftLeft:
+			was := c.Regs[in.Rd]
 			n := c.Regs[in.Rt] & 31
 			v := c.Regs[in.Rs] << n
-			env.Logf("alu", "r%d <= %d << %d = %d", in.Rd, c.Regs[in.Rs], n, v)
+			env.Logf("alu", "r%d <= %d << %d = %d (was %d)", in.Rd, c.Regs[in.Rs], n, v, was)
 			c.writeReg(in.Rd, v)
 		case isa.OpShiftRight:
+			was := c.Regs[in.Rd]
 			n := c.Regs[in.Rt] & 31
 			v := c.Regs[in.Rs] >> n
-			env.Logf("alu", "r%d <= %d >> %d = %d", in.Rd, c.Regs[in.Rs], n, v)
+			env.Logf("alu", "r%d <= %d >> %d = %d (was %d)", in.Rd, c.Regs[in.Rs], n, v, was)
 			c.writeReg(in.Rd, v)
 		case isa.OpShiftRightArithmetic:
+			was := c.Regs[in.Rd]
 			n := c.Regs[in.Rt] & 31
 			v := uint32(int32(c.Regs[in.Rs]) >> n)
-			env.Logf("alu", "r%d <= %d >>a %d = %d", in.Rd, int32(c.Regs[in.Rs]), n, int32(v))
+			env.Logf("alu", "r%d <= %d >>a %d = %d (was %d)", in.Rd, int32(c.Regs[in.Rs]), n, v, was)
 			c.writeReg(in.Rd, v)
 
 		// ---- memory: words are aligned and posted; bytes need no alignment ----
@@ -151,22 +159,23 @@ func (c *CPU) Tick(phase Phase, env Env) {
 			addr := c.Regs[in.Rs] + uint32(in.Imm)
 			if addr%4 != 0 {
 				env.Logf("fault", "load_word from 0x%04x: %s", addr, BusNotPermitted)
-				halt(Fault{Kind: "alignment", Addr: addr, PC: c.PC - 4, Phase: phase})
+				halt(Fault{Kind: "alignment", Addr: addr, PC: c.PC - 4, Phase: phase, Word: c.fetchWord})
 				return
 			}
 			v, st := env.ReadBus(addr)
 			if st != BusOK {
 				env.Logf("fault", "load_word from 0x%04x: %s", addr, st)
-				halt(Fault{Kind: "bus_" + string(st), Addr: addr, PC: c.PC - 4, Phase: phase})
+				halt(Fault{Kind: "bus_" + string(st), Addr: addr, PC: c.PC - 4, Phase: phase, Word: c.fetchWord})
 				return
 			}
-			env.Logf("load", "r%d <= mem[0x%04x] = %d", in.Rd, addr, v)
+			was := c.Regs[in.Rd]
+			env.Logf("load", "r%d <= mem[0x%04x] = %d (was %d)", in.Rd, addr, v, was)
 			c.writeReg(in.Rd, v)
 		case isa.OpStoreWord:
 			addr := c.Regs[in.Rs] + uint32(in.Imm)
 			if addr%4 != 0 {
 				env.Logf("fault", "store_word to 0x%04x: %s", addr, BusNotPermitted)
-				halt(Fault{Kind: "alignment", Addr: addr, PC: c.PC - 4, Phase: phase})
+				halt(Fault{Kind: "alignment", Addr: addr, PC: c.PC - 4, Phase: phase, Word: c.fetchWord})
 				return
 			}
 			env.Logf("store", "mem[0x%04x] <= r%d (%d)", addr, in.Rt, c.Regs[in.Rt])
@@ -176,10 +185,11 @@ func (c *CPU) Tick(phase Phase, env Env) {
 			b, st := env.ReadBusByte(addr)
 			if st != BusOK {
 				env.Logf("fault", "load_byte from 0x%04x: %s", addr, st)
-				halt(Fault{Kind: "bus_" + string(st), Addr: addr, PC: c.PC - 4, Phase: phase})
+				halt(Fault{Kind: "bus_" + string(st), Addr: addr, PC: c.PC - 4, Phase: phase, Word: c.fetchWord})
 				return
 			}
-			env.Logf("load_byte", "r%d <= mem[0x%04x] = %d", in.Rd, addr, b)
+			was := c.Regs[in.Rd]
+			env.Logf("load_byte", "r%d <= mem[0x%04x] = %d (was %d)", in.Rd, addr, b, was)
 			c.writeReg(in.Rd, uint32(b)) // zero-extended
 		case isa.OpStoreByte:
 			addr := c.Regs[in.Rs] + uint32(in.Imm)
@@ -223,7 +233,7 @@ func (c *CPU) Tick(phase Phase, env Env) {
 		case isa.OpReturnFromInterrupt:
 			if !c.inHandler {
 				env.Logf("fault", "return_from_interrupt with no interrupt in flight")
-				halt(Fault{Kind: "stray_rfi", PC: c.PC - 4, Phase: phase})
+				halt(Fault{Kind: "stray_rfi", PC: c.PC - 4, Phase: phase, Word: c.fetchWord})
 				return
 			}
 			at := c.PC - 4

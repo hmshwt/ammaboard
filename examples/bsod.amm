@@ -1,0 +1,5 @@
+; deliberate fault for the blue screen demo
+        add_number r1, r0, 1234
+        add_number r2, r0, 66
+        store_word r1, 0(r2)
+        halt
