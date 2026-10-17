@@ -1,5 +1,7 @@
 // Package isa defines the AmmaBoard ISA: opcodes, encodings, and decode
-// helpers. Encoding is fixed 32-bit words:
+// helpers, plus Specs — the one table that describes each instruction
+// (opcode, mnemonic, operand form) and keeps the assembler and the CPU in
+// parity. Encoding is fixed 32-bit words:
 //
 //	[ opcode:5 | rd:3 | rs:3 | rt:3 | immediate:18 ]
 //
@@ -38,39 +40,87 @@ const (
 	OpReturnFromInterrupt  // return_from_interrupt   (zero-operand)
 )
 
-var names = map[Opcode]string{
-	OpLoadWord:             "load_word",
-	OpStoreWord:            "store_word",
-	OpAdd:                  "add",
-	OpAddNumber:            "add_number",
-	OpSubtract:             "subtract",
-	OpJumpIfEqual:          "jump_if_equal",
-	OpJumpIfNotEqual:       "jump_if_not_equal",
-	OpCall:                 "call",
-	OpGoto:                 "goto",
-	OpHalt:                 "halt",
-	OpLoadByte:             "load_byte",
-	OpStoreByte:            "store_byte",
-	OpShiftLeft:            "shift_left",
-	OpShiftRight:           "shift_right",
-	OpShiftRightArithmetic: "shift_right_arithmetic",
-	OpBitAnd:               "bit_and",
-	OpBitOr:                "bit_or",
-	OpAllowInterrupts:      "allow_interrupts",
-	OpForbidInterrupts:     "forbid_interrupts",
-	OpReturnFromInterrupt:  "return_from_interrupt",
+// Form is an instruction's operand grammar — the shape people write and the
+// shape the fields take. The assembler parses each mnemonic by its form; Encode
+// and Decode treat FormZero's fields as reserved. Nothing else repeats the
+// operand lists.
+type Form uint8
+
+const (
+	FormZero   Form = iota // no operands: halt, allow_interrupts, …
+	FormRRR                // rd, rs, rt         add, subtract, shifts, bitwise
+	FormRRI                // rd, rs, imm        add_number
+	FormLoad               // rd, imm(rs)        load_word, load_byte
+	FormStore              // rt, imm(rs)        store_word, store_byte
+	FormBranch             // rs, rt, target     jump_if_equal, jump_if_not_equal
+	FormCall               // target             call
+	FormGoto               // rs                 goto
+)
+
+// Spec is one instruction's full description: opcode, mnemonic, operand form.
+// This table is the single source of truth that keeps assembler and CPU in
+// parity — the assembler encodes by Form, the CPU registers its executor by
+// Opcode, and a conformance test (parity_test.go) fails the build if any layer
+// drifts. Adding an instruction = a row here + a file in package cpu + tests.
+type Spec struct {
+	Op       Opcode
+	Mnemonic string
+	Form     Form
 }
 
-// zeroOperandOps take no fields: rd/rs/rt/imm are reserved and must be zero —
-// the machine refuses nonsense (the documented teachable fork).
-var zeroOperandOps = map[Opcode]bool{
-	OpAllowInterrupts:     true,
-	OpForbidInterrupts:    true,
-	OpReturnFromInterrupt: true,
+// NumOpcodes is how many verbs the ISA defines; opcodes run 1..NumOpcodes.
+const NumOpcodes = 20
+
+// Specs lists every instruction, in opcode order.
+var Specs = []Spec{
+	{OpLoadWord, "load_word", FormLoad},
+	{OpStoreWord, "store_word", FormStore},
+	{OpAdd, "add", FormRRR},
+	{OpAddNumber, "add_number", FormRRI},
+	{OpSubtract, "subtract", FormRRR},
+	{OpJumpIfEqual, "jump_if_equal", FormBranch},
+	{OpJumpIfNotEqual, "jump_if_not_equal", FormBranch},
+	{OpCall, "call", FormCall},
+	{OpGoto, "goto", FormGoto},
+	{OpHalt, "halt", FormZero},
+	{OpLoadByte, "load_byte", FormLoad},
+	{OpStoreByte, "store_byte", FormStore},
+	{OpShiftLeft, "shift_left", FormRRR},
+	{OpShiftRight, "shift_right", FormRRR},
+	{OpShiftRightArithmetic, "shift_right_arithmetic", FormRRR},
+	{OpBitAnd, "bit_and", FormRRR},
+	{OpBitOr, "bit_or", FormRRR},
+	{OpAllowInterrupts, "allow_interrupts", FormZero},
+	{OpForbidInterrupts, "forbid_interrupts", FormZero},
+	{OpReturnFromInterrupt, "return_from_interrupt", FormZero},
 }
 
-// Name returns the mnemonic for an opcode.
-func (op Opcode) Name() string { return names[op] }
+var (
+	specByOp   = map[Opcode]Spec{}
+	specByName = map[string]Spec{}
+)
+
+func init() {
+	for _, s := range Specs {
+		specByOp[s.Op] = s
+		specByName[s.Mnemonic] = s
+	}
+}
+
+// Lookup finds a Spec by mnemonic (lowercase; the assembler lowercases first).
+func Lookup(mnemonic string) (Spec, bool) {
+	s, ok := specByName[mnemonic]
+	return s, ok
+}
+
+// SpecFor finds a Spec by opcode.
+func SpecFor(op Opcode) (Spec, bool) {
+	s, ok := specByOp[op]
+	return s, ok
+}
+
+// Name returns the mnemonic for an opcode ("" if unknown).
+func (op Opcode) Name() string { return specByOp[op].Mnemonic }
 
 // Field positions and widths.
 const (
@@ -97,14 +147,20 @@ type Instruction struct {
 
 // Encode packs fields into a machine word. Reserved bits must be zero.
 func Encode(op Opcode, rd, rs, rt uint8, imm int32) (uint32, error) {
-	if imm < -(1<<17) || imm > (1<<18)-1 {
-		return 0, fmt.Errorf("immediate %d out of 18-bit range", imm)
+	// The immediate field is 18-bit two's complement: [-2^17, 2^17-1].
+	// Accepting anything wider would not round-trip — Decode sign-extends
+	// bit 17, so e.g. 2^17 would silently decode as -2^17.
+	if imm < -(1<<17) || imm > (1<<17)-1 {
+		return 0, fmt.Errorf("immediate %d out of 18-bit signed range", imm)
 	}
 	if rd > RegMask || rs > RegMask || rt > RegMask {
 		return 0, fmt.Errorf("register number out of range")
 	}
-	if zeroOperandOps[op] && (rd != 0 || rs != 0 || rt != 0 || imm != 0) {
-		return 0, fmt.Errorf("%s takes no operands: reserved fields must be zero", op.Name())
+	// Zero-operand instructions reserve their fields: the machine refuses
+	// nonsense. (halt joined this rule with the Specs table — previously its
+	// fields were quietly ignored.)
+	if s, ok := specByOp[op]; ok && s.Form == FormZero && (rd != 0 || rs != 0 || rt != 0 || imm != 0) {
+		return 0, fmt.Errorf("%s takes no operands: reserved fields must be zero", s.Mnemonic)
 	}
 	w := uint32(op&OpMask)<<OpShift |
 		uint32(rd&RegMask)<<RdShift |
@@ -127,7 +183,8 @@ func MustEncode(op Opcode, rd, rs, rt uint8, imm int32) uint32 {
 // or any reserved (out-of-range) bits are set — the machine refuses nonsense.
 func Decode(word uint32) (Instruction, error) {
 	op := Opcode(word >> OpShift & OpMask)
-	if _, ok := names[op]; !ok {
+	spec, ok := specByOp[op]
+	if !ok {
 		return Instruction{}, fmt.Errorf("unknown opcode %d in word 0x%08x", op, word)
 	}
 	in := Instruction{
@@ -142,10 +199,10 @@ func Decode(word uint32) (Instruction, error) {
 	// 18..17 above the immediate belong to fields, so the only illegal
 	// configuration is an opcode whose top bits overflow the 5-bit space —
 	// already covered. Imm is always 18 bits; nothing is reserved.
-	// Zero-operand (system) ops are the exception: their fields ARE reserved
-	// and must be zero.
-	if zeroOperandOps[op] && (in.Rd != 0 || in.Rs != 0 || in.Rt != 0 || uint32(in.Imm)&ImmMask != 0) {
-		return Instruction{}, fmt.Errorf("%s: reserved fields must be zero in word 0x%08x", op.Name(), word)
+	// Zero-operand (system + halt) ops are the exception: their fields ARE
+	// reserved and must be zero.
+	if spec.Form == FormZero && (in.Rd != 0 || in.Rs != 0 || in.Rt != 0 || uint32(in.Imm)&ImmMask != 0) {
+		return Instruction{}, fmt.Errorf("%s: reserved fields must be zero in word 0x%08x", spec.Mnemonic, word)
 	}
 	return in, nil
 }

@@ -1,30 +1,39 @@
-package machine
+// Package bluescreen renders the machine's full "I stopped somewhere I should
+// not have" panel (ui.md §9): what happened, what it means in plain language,
+// the complete state at the moment of the fault, and the cause chain that led
+// here. A fault is data, and the screen says everything about it. Rendered for
+// any halt that is NOT a clean halt; a clean stop needs no blue screen.
+package bluescreen
 
 import (
+	"encoding/binary"
 	"fmt"
 	"strings"
 
 	"ammaboard/internal/isa"
+	"ammaboard/internal/machine"
+	"ammaboard/internal/machine/cpu"
+	"ammaboard/internal/machine/ram"
 )
 
-// BlueScreen is the machine's full "I stopped somewhere I should not have"
-// panel: what happened, what it means in plain language, the complete state
-// at the moment of the fault, and the cause chain that led here. ui.md §9 —
-// a fault is data, and the screen says everything about it. Rendered for any
-// halt that is NOT a clean halt; a clean stop needs no blue screen.
-func BlueScreen(cpu *CPU, board *Motherboard, ram *RAM, recent []Event) string {
-	f := board.HaltedBy()
+// Render builds the panel for the board's terminal fault. recent is the event
+// stream so far, used for the cause chain.
+func Render(c *cpu.CPU, board *machine.Motherboard, r *ram.RAM, recent []machine.Event) string {
+	f := board.Fault()
+	if f == nil {
+		return "" // nothing faulted: a blue screen would be a lie
+	}
 	var b strings.Builder
 
 	line := strings.Repeat("=", 72)
 	b.WriteString(line + "\n")
-	b.WriteString(" BLUE SCREEN — AmmaBoard-2 stopped somewhere it should not have\n")
+	fmt.Fprintf(&b, " BLUE SCREEN — %s stopped somewhere it should not have\n", machine.MachineVersion)
 	b.WriteString(line + "\n\n")
 
 	// ---- what happened ----
 	b.WriteString(" what happened\n")
 	fmt.Fprintf(&b, "   %s fault, cycle %d, phase %s\n", f.Kind, board.Major, f.Phase)
-	b.WriteString("   " + faultExplanation(f) + "\n\n")
+	b.WriteString("   " + faultExplanation(*f) + "\n\n")
 
 	// ---- the instruction that caused it ----
 	b.WriteString(" the instruction that caused it\n")
@@ -44,16 +53,16 @@ func BlueScreen(cpu *CPU, board *Motherboard, ram *RAM, recent []Event) string {
 
 	// ---- the machine at the moment of the fault ----
 	b.WriteString(" the machine at the moment of the fault\n")
-	fmt.Fprintf(&b, "   program counter (next fetch) ........ 0x%04x\n", cpu.PC)
+	fmt.Fprintf(&b, "   program counter (next fetch) ........ 0x%04x\n", c.PC)
 	ie := "enabled"
-	if cpu.Status&StatusIE == 0 {
+	if c.Status&cpu.StatusIE == 0 {
 		ie = "disabled"
 	}
 	fmt.Fprintf(&b, "   interrupts .......................... %s\n", ie)
 	for i := 0; i < 8; i += 2 {
-		fmt.Fprintf(&b, "   register_%d = %-12d register_%d = %d\n", i, cpu.Regs[i], i+1, cpu.Regs[i+1])
+		fmt.Fprintf(&b, "   register_%d = %-12d register_%d = %d\n", i, c.Regs[i], i+1, c.Regs[i+1])
 	}
-	b.WriteString(memoryWindow(ram, f.Addr))
+	b.WriteString(memoryWindow(r, f.Addr))
 	b.WriteString("   address windows on this board:\n")
 	b.WriteString(board.DescribeWindows())
 	b.WriteString("\n")
@@ -78,7 +87,7 @@ func BlueScreen(cpu *CPU, board *Motherboard, ram *RAM, recent []Event) string {
 }
 
 // faultExplanation is the kernel's plain-language "what this usually means".
-func faultExplanation(f Fault) string {
+func faultExplanation(f machine.Fault) string {
 	switch f.Kind {
 	case "unknown_opcode":
 		return "The CPU fetched a word whose opcode is not any instruction it knows —" +
@@ -88,7 +97,8 @@ func faultExplanation(f Fault) string {
 			" on 4-byte boundaries — only byte accesses may sit between them."
 	case "bus_NOT_CONNECTED":
 		return "The program reached an address that no component owns. The wire leads" +
-			" nowhere — usually a wrong pointer or an address past the end of RAM."
+			" nowhere — usually a wrong pointer, an address past the end of RAM, or a store" +
+			" posted to a gap between devices."
 	case "bus_NOT_PERMITTED":
 		return "The access reached a component that refuses it: an unaligned word on RAM," +
 			" or a byte access into a word-only device."
@@ -102,20 +112,21 @@ func faultExplanation(f Fault) string {
 
 // memoryWindow renders the words around the faulting address, if it falls in
 // RAM. The faulting word is marked — visibility down to the byte.
-func memoryWindow(ram *RAM, addr uint32) string {
-	if addr == 0 || addr < ram.Base || addr >= ram.Base+ram.Size {
+func memoryWindow(r *ram.RAM, addr uint32) string {
+	if addr == 0 || addr < r.Base || addr >= r.Base+r.Size {
 		return ""
 	}
-	start := (addr - ram.Base) &^ 0xF // 4-word aligned window
+	mem := r.Dump()
+	start := (addr - r.Base) &^ 0xF // 4-word aligned window
 	var s strings.Builder
 	s.WriteString("   memory around the faulting address:\n")
-	for off := start; off+4 <= start+32 && off+4 <= uint32(len(ram.mem)); off += 4 {
-		w := uint32(ram.mem[off]) | uint32(ram.mem[off+1])<<8 | uint32(ram.mem[off+2])<<16 | uint32(ram.mem[off+3])<<24
+	for off := start; off+4 <= start+32 && off+4 <= uint32(len(mem)); off += 4 {
+		w := binary.LittleEndian.Uint32(mem[off:])
 		mark := ""
-		if addr >= ram.Base+off && addr < ram.Base+off+4 {
+		if addr >= r.Base+off && addr < r.Base+off+4 {
 			mark = "  <- faulting address in this word"
 		}
-		fmt.Fprintf(&s, "     0x%04x: %08x%s\n", ram.Base+off, w, mark)
+		fmt.Fprintf(&s, "     0x%04x: %08x%s\n", r.Base+off, w, mark)
 	}
 	return s.String()
 }

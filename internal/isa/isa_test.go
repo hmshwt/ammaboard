@@ -47,6 +47,25 @@ func TestImmediateRangeAndSign(t *testing.T) {
 	if _, err := Encode(OpAddNumber, 1, 0, 0, min-1); err == nil {
 		t.Error("out-of-range immediate should fail")
 	}
+	// The positive half is what sign extension breaks: 2^17 encodes in 18
+	// bits but decodes as -2^17. It must be refused, not silently wrapped.
+	if _, err := Encode(OpAddNumber, 1, 0, 0, 1<<17); err == nil {
+		t.Error("2^17 is not representable in 18-bit two's complement; should fail")
+	}
+	if _, err := Encode(OpAddNumber, 1, 0, 0, (1<<18)-1); err == nil {
+		t.Error("2^18-1 is not representable; should fail")
+	}
+	// Every accepted immediate must round-trip exactly.
+	for _, imm := range []int32{min, -1, 0, 1, max, max - 1, min + 1} {
+		w, err := Encode(OpAddNumber, 1, 0, 0, imm)
+		if err != nil {
+			t.Errorf("imm %d should encode: %v", imm, err)
+			continue
+		}
+		if in, err := Decode(w); err != nil || in.Imm != imm {
+			t.Errorf("imm %d did not round-trip: %+v, %v", imm, in, err)
+		}
+	}
 }
 
 func TestDecodeRefusesNonsense(t *testing.T) {
@@ -58,10 +77,11 @@ func TestDecodeRefusesNonsense(t *testing.T) {
 	}
 }
 
-// System ops are zero-operand: their fields are reserved and must be zero —
-// in the encoder AND in the decoder (a hand-rolled binary must fault too).
+// Zero-operand instructions (halt + the system ops) reserve their fields:
+// must be zero in the encoder AND the decoder (a hand-rolled binary must
+// fault too).
 func TestSystemOpsRefuseNonzeroFields(t *testing.T) {
-	ops := []Opcode{OpAllowInterrupts, OpForbidInterrupts, OpReturnFromInterrupt}
+	ops := []Opcode{OpHalt, OpAllowInterrupts, OpForbidInterrupts, OpReturnFromInterrupt}
 	for _, op := range ops {
 		if _, err := Encode(op, 1, 0, 0, 0); err == nil {
 			t.Errorf("%s encode with rd!=0 should fail", op.Name())

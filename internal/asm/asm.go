@@ -1,7 +1,19 @@
-// Package asm assembles AmmaBoard boot-ten assembly into machine words.
-// Two-pass: pass 1 resolves labels, pass 2 encodes. Branch/call immediates are
-// byte offsets relative to the instruction after the branch (pc is advanced at
-// fetch), matching the CPU's semantics.
+// Package asm assembles AmmaBoard assembly into machine words. Two-pass: pass
+// 1 resolves labels, pass 2 encodes. Branch/call immediates are byte offsets
+// relative to the instruction after the branch (pc is advanced at fetch),
+// matching the CPU's semantics.
+//
+// Operand forms come from isa.Specs (the ISA's single source of truth); this
+// package implements one encoder per form:
+//
+//	FormZero   no operands                halt
+//	FormRRR    rd, rs, rt                 add, subtract, shifts, bitwise
+//	FormRRI    rd, rs, imm|label          add_number (label = absolute address)
+//	FormLoad   rd, imm(rs)                load_word, load_byte (no alignment for bytes)
+//	FormStore  rt, imm(rs)                store_word, store_byte
+//	FormBranch rs, rt, target|label       jump_if_equal, jump_if_not_equal
+//	FormCall   target|label               call (return address -> r7)
+//	FormGoto   rs                         goto
 package asm
 
 import (
@@ -12,25 +24,9 @@ import (
 	"ammaboard/internal/isa"
 )
 
-// Assemble converts source text to machine words. Comments start with ';' or '#'.
-// Operand grammar (destination-first):
-//
-//	add        rd, rs, rt
-//	add_number rd, rs, imm|label     (label = absolute byte address)
-//	subtract   rd, rs, rt
-//	load_word  rd, imm(rs)           (word-aligned at runtime)
-//	store_word rt, imm(rs)
-//	load_byte  rd, imm(rs)           (zero-extended; no alignment)
-//	store_byte rt, imm(rs)           (low byte; no alignment)
-//	shift_left shift_right shift_right_arithmetic   rd, rs, rt  (amount = rt&31)
-//	bit_and    rd, rs, rt
-//	bit_or     rd, rs, rt
-//	jump_if_equal   rs, rt, label|imm
-//	jump_if_not_equal rs, rt, label|imm
-//	call       label|imm          (return address -> r7)
-//	goto       rs
-//	allow_interrupts / forbid_interrupts / return_from_interrupt   (no operands)
-//	halt
+// Assemble converts source text to machine words. Comments start with ';' or
+// '#'. Operand order is destination-first; the operand forms live in isa.Specs
+// (summarized in the package doc) — this file never lists instructions.
 func Assemble(src string) ([]uint32, error) {
 	type line struct {
 		no   int
@@ -141,152 +137,113 @@ func encodeLine(t string, labels map[string]int, here int) (uint32, error) {
 	}
 	mnem := strings.ToLower(fields[0])
 	args := fields[1:]
-	val := func(i int) (string, error) {
-		if i >= len(args) {
-			return "", fmt.Errorf("missing operand %d", i+1)
-		}
-		return args[i], nil
+	// No per-instruction knowledge lives here: isa.Specs says each mnemonic's
+	// operand form, and this file implements one encoder per form. Adding an
+	// instruction whose form already exists needs no change in this file.
+	spec, ok := isa.Lookup(mnem)
+	if !ok {
+		return 0, fmt.Errorf("unknown mnemonic %q", mnem)
 	}
-
-	switch mnem {
-	case "halt":
-		return isa.MustEncode(isa.OpHalt, 0, 0, 0, 0), nil
-
-	case "add", "subtract":
-		rd, err := val(0)
-		if err != nil {
-			return 0, err
-		}
-		rs, err := val(1)
-		if err != nil {
-			return 0, err
-		}
-		rt, err := val(2)
-		if err != nil {
-			return 0, err
-		}
-		r1, e1 := reg(rd)
-		r2, e2 := reg(rs)
-		r3, e3 := reg(rt)
-		if err := firstErr(e1, e2, e3); err != nil {
-			return 0, err
-		}
-		op := isa.OpAdd
-		if mnem == "subtract" {
-			op = isa.OpSubtract
-		}
-		return isa.MustEncode(op, r1, r2, r3, 0), nil
-
-	case "add_number":
-		r1, err := reg(must(args, 0))
-		r2, e2 := reg(must(args, 1))
-		var imm int32
-		if e2 == nil {
-			imm, err = immOrLabel(must(args, 2), labels, here, false)
-		}
-		if err != nil || e2 != nil {
-			return 0, firstErr(err, e2)
-		}
-		return isa.MustEncode(isa.OpAddNumber, r1, r2, 0, imm), nil
-
-	case "load_word":
-		rd, e1 := reg(must(args, 0))
-		base, off, e2 := memOperand(must(args, 1), labels)
-		if err := firstErr(e1, e2); err != nil {
-			return 0, err
-		}
-		return isa.MustEncode(isa.OpLoadWord, rd, base, 0, off), nil
-
-	case "load_byte":
-		rd, e1 := reg(must(args, 0))
-		base, off, e2 := memOperand(must(args, 1), labels)
-		if err := firstErr(e1, e2); err != nil {
-			return 0, err
-		}
-		return isa.MustEncode(isa.OpLoadByte, rd, base, 0, off), nil
-
-	case "store_byte":
-		rt, e1 := reg(must(args, 0))
-		base, off, e2 := memOperand(must(args, 1), labels)
-		if err := firstErr(e1, e2); err != nil {
-			return 0, err
-		}
-		return isa.MustEncode(isa.OpStoreByte, 0, base, rt, off), nil
-
-	case "shift_left", "shift_right", "shift_right_arithmetic", "bit_and", "bit_or":
-		r1, e1 := reg(must(args, 0))
-		r2, e2 := reg(must(args, 1))
-		r3, e3 := reg(must(args, 2))
-		if err := firstErr(e1, e2, e3); err != nil {
-			return 0, err
-		}
-		op := map[string]isa.Opcode{
-			"shift_left":             isa.OpShiftLeft,
-			"shift_right":            isa.OpShiftRight,
-			"shift_right_arithmetic": isa.OpShiftRightArithmetic,
-			"bit_and":                isa.OpBitAnd,
-			"bit_or":                 isa.OpBitOr,
-		}[mnem]
-		return isa.MustEncode(op, r1, r2, r3, 0), nil
-
-	case "allow_interrupts", "forbid_interrupts", "return_from_interrupt":
+	switch spec.Form {
+	case isa.FormZero:
 		if len(args) != 0 {
 			return 0, fmt.Errorf("%s takes no operands", mnem)
 		}
-		op := map[string]isa.Opcode{
-			"allow_interrupts":      isa.OpAllowInterrupts,
-			"forbid_interrupts":     isa.OpForbidInterrupts,
-			"return_from_interrupt": isa.OpReturnFromInterrupt,
-		}[mnem]
-		return isa.MustEncode(op, 0, 0, 0, 0), nil
+		return enc(spec.Op, 0, 0, 0, 0)
 
-	case "store_word":
-		rt, e1 := reg(must(args, 0))
-		base, off, e2 := memOperand(must(args, 1), labels)
-		if err := firstErr(e1, e2); err != nil {
+	case isa.FormRRR: // rd, rs, rt
+		if len(args) != 3 {
+			return 0, fmt.Errorf("%s wants rd, rs, rt", mnem)
+		}
+		rd, e1 := reg(args[0])
+		rs, e2 := reg(args[1])
+		rt, e3 := reg(args[2])
+		if err := firstErr(e1, e2, e3); err != nil {
 			return 0, err
 		}
-		return isa.MustEncode(isa.OpStoreWord, 0, base, rt, off), nil
+		return enc(spec.Op, rd, rs, rt, 0)
 
-	case "jump_if_equal", "jump_if_not_equal":
-		r1, e1 := reg(must(args, 0))
-		r2, e2 := reg(must(args, 1))
+	case isa.FormRRI: // rd, rs, imm|label
+		if len(args) != 3 {
+			return 0, fmt.Errorf("%s wants rd, rs, imm", mnem)
+		}
+		rd, e1 := reg(args[0])
+		rs, e2 := reg(args[1])
 		var imm int32
 		var e3 error
 		if e1 == nil && e2 == nil {
-			imm, e3 = immOrLabel(must(args, 2), labels, here, true)
+			imm, e3 = immOrLabel(args[2], labels, here, false)
 		}
 		if err := firstErr(e1, e2, e3); err != nil {
 			return 0, err
 		}
-		op := isa.OpJumpIfEqual
-		if mnem == "jump_if_not_equal" {
-			op = isa.OpJumpIfNotEqual
-		}
-		return isa.MustEncode(op, 0, r1, r2, imm), nil
+		return enc(spec.Op, rd, rs, 0, imm)
 
-	case "call":
-		imm, err := immOrLabel(must(args, 0), labels, here, true)
+	case isa.FormLoad: // rd, imm(rs)
+		if len(args) != 2 {
+			return 0, fmt.Errorf("%s wants rd, imm(rs)", mnem)
+		}
+		rd, e1 := reg(args[0])
+		base, off, e2 := memOperand(args[1], labels)
+		if err := firstErr(e1, e2); err != nil {
+			return 0, err
+		}
+		return enc(spec.Op, rd, base, 0, off)
+
+	case isa.FormStore: // rt, imm(rs)
+		if len(args) != 2 {
+			return 0, fmt.Errorf("%s wants rt, imm(rs)", mnem)
+		}
+		rt, e1 := reg(args[0])
+		base, off, e2 := memOperand(args[1], labels)
+		if err := firstErr(e1, e2); err != nil {
+			return 0, err
+		}
+		return enc(spec.Op, 0, base, rt, off)
+
+	case isa.FormBranch: // rs, rt, target
+		if len(args) != 3 {
+			return 0, fmt.Errorf("%s wants rs, rt, target", mnem)
+		}
+		rs, e1 := reg(args[0])
+		rt, e2 := reg(args[1])
+		var imm int32
+		var e3 error
+		if e1 == nil && e2 == nil {
+			imm, e3 = immOrLabel(args[2], labels, here, true)
+		}
+		if err := firstErr(e1, e2, e3); err != nil {
+			return 0, err
+		}
+		return enc(spec.Op, 0, rs, rt, imm)
+
+	case isa.FormCall: // target
+		if len(args) != 1 {
+			return 0, fmt.Errorf("%s wants target", mnem)
+		}
+		imm, err := immOrLabel(args[0], labels, here, true)
 		if err != nil {
 			return 0, err
 		}
-		return isa.MustEncode(isa.OpCall, 0, 0, 0, imm), nil
+		return enc(spec.Op, 0, 0, 0, imm)
 
-	case "goto":
-		rs, err := reg(must(args, 0))
+	case isa.FormGoto: // rs
+		if len(args) != 1 {
+			return 0, fmt.Errorf("%s wants rs", mnem)
+		}
+		rs, err := reg(args[0])
 		if err != nil {
 			return 0, err
 		}
-		return isa.MustEncode(isa.OpGoto, 0, rs, 0, 0), nil
+		return enc(spec.Op, 0, rs, 0, 0)
 	}
-	return 0, fmt.Errorf("unknown mnemonic %q", mnem)
+	return 0, fmt.Errorf("%s: unsupported operand form %d", mnem, spec.Form)
 }
 
-func must(args []string, i int) string {
-	if i >= len(args) {
-		return ""
-	}
-	return args[i]
+// enc packs one instruction, returning Encode's error instead of panicking —
+// bad source must be reported as a line error, never crash the tool.
+func enc(op isa.Opcode, rd, rs, rt uint8, imm int32) (uint32, error) {
+	return isa.Encode(op, rd, rs, rt, imm)
 }
 
 func firstErr(errs ...error) error {

@@ -1,7 +1,3 @@
-// Package machine implements the AmmaBoard motherboard: an Elm-like, single-threaded,
-// phase-stepped machine. The motherboard is the broker — components never reference
-// each other, all interaction goes through ReadBus/WriteBus, and every interaction
-// is logged. Same inputs + same cycle count = identical machine state, always.
 package machine
 
 import (
@@ -9,98 +5,14 @@ import (
 	"fmt"
 )
 
-// MachineVersion names the machine generation: ISA stage, not app release
-// (motherboard.md §2). AmmaBoard-2 = boot ten + bytes/shifts/interrupts.
-const MachineVersion = "AmmaBoard-2"
-
-// Phase is a named minor tick within one major tick (one machine cycle).
-type Phase string
-
-// The AmmaBoard-2 phase schedule. CPU phases; bus latches flip between phases.
-const (
-	PhaseFetch   Phase = "FETCH"
-	PhaseDecode  Phase = "DECODE"
-	PhaseExecute Phase = "EXECUTE"
-)
-
-// Schedule is the fixed minor-tick order within one major tick.
-var Schedule = []Phase{PhaseFetch, PhaseDecode, PhaseExecute}
-
-// BusStatus is what the broker answers with. Failures are data, not Go errors.
-type BusStatus string
-
-const (
-	BusOK           BusStatus = "OK"
-	BusNotConnected BusStatus = "NOT_CONNECTED"
-	BusNotPermitted BusStatus = "NOT_PERMITTED" // e.g. unaligned word access
-	BusIdle         BusStatus = "IDLE"
-)
-
-// Fault is first-class data: the machine's honest "I stopped, here is why".
-type Fault struct {
-	Kind  string // "unknown_opcode", "alignment", "halt"
-	Addr  uint32
-	PC    uint32
-	Phase Phase
-	Word  uint32
-}
-
-// Env is what a component gets each tick: the broker + the log + the power to
-// stop the machine. Components never hold references to each other — only to
-// this interface.
-type Env interface {
-	ReadBus(addr uint32) (uint32, BusStatus)
-	WriteBus(addr uint32, val uint32)
-	ReadBusByte(addr uint32) (uint8, BusStatus)
-	WriteBusByte(addr uint32, val uint8)
-	RaiseInterrupt(line string)
-	Logf(kind, format string, args ...any)
-	Halt(f Fault)
-}
-
-// Component is one device on the board. Tick is called once per phase, in the
-// motherboard's fixed order. A tick must be synchronous and deterministic.
-type Component interface {
-	Name() string
-	Tick(phase Phase, env Env)
-}
-
-// Reader is implemented by components that own an address window (e.g. RAM).
-// The broker routes ReadBus calls for addresses inside Window to this component.
-type Reader interface {
-	Window() (base, size uint32)
-	Read(addr uint32) (uint32, BusStatus)
-}
-
-// Writer is implemented by readable components that also accept latched writes.
-type Writer interface {
-	Write(addr uint32, val uint32)
-}
-
-// ByteReader is implemented by window owners that also serve byte-granular
-// reads. A word-only device in whose window a byte access lands answers
-// NOT_PERMITTED — the machine refuses nonsense, symmetrically.
-type ByteReader interface {
-	BusReadByte(addr uint32) (uint8, BusStatus)
-}
-
-// ByteWriter accepts latched byte-granular writes.
-type ByteWriter interface {
-	BusWriteByte(addr uint32, val uint8)
-}
-
-// interruptible is implemented by components that can take an interrupt at
-// the board's latch edge (the CPU). The broker knows no details beyond this.
-type interruptible interface {
-	TakeInterrupt(vector uint32) (taken bool, fromPC, fromStatus uint32)
-}
-
-// pendingWrite is a value posted to the bus; it becomes visible to readers only
-// at the phase latch (between phases). Everyone within a phase sees a stable bus.
+// pendingWrite is a value posted to the bus; it becomes visible to readers
+// only at the phase latch (between phases). Everyone within a phase sees a
+// stable bus. Site carries the posting instruction when it could be named.
 type pendingWrite struct {
 	addr uint32
 	val  uint32
 	size uint32 // 4 = word, 1 = byte
+	site WriteSite
 }
 
 // Motherboard is the root component: phase schedule, broker, log.
@@ -114,19 +26,10 @@ type Motherboard struct {
 	}
 	Major    int
 	Halted   bool
-	Fault    *Fault
+	fault    *Fault // terminal fault record; nil on a clean halt or budget cut-off
 	sink     func(Event)
 	ticking  string // component currently in Tick
 	curPhase Phase
-}
-
-// Event is one logged interaction.
-type Event struct {
-	Major     int
-	Phase     string
-	Component string
-	Kind      string
-	Detail    string
 }
 
 // New creates a motherboard. sink receives every event, in order. Components
@@ -151,10 +54,12 @@ func (m *Motherboard) Attach(c Component) {
 	}
 }
 
-// Run steps up to maxMajors major ticks, or until halt/fault. It returns the
-// final major number reached.
+// Run steps up to maxMajors major ticks (maxMajors <= 0 means no cap), or
+// until the machine stops. It returns the final major number reached. A run
+// that hits the cap while still executing is left mid-flight — a pause, not a
+// stop — and StopReason reports StopBudget; calling Run again resumes it.
 func (m *Motherboard) Run(maxMajors int) int {
-	for i := 0; i < maxMajors && !m.Halted; i++ {
+	for i := 0; (maxMajors <= 0 || i < maxMajors) && !m.Halted; i++ {
 		m.Major++
 		m.sink(Event{Major: m.Major, Component: "board", Kind: "major"})
 		m.deliverInterrupts() // the seam: latch edge of the previous cycle, before the next fetch
@@ -183,66 +88,119 @@ func (m *Motherboard) runPhase(phase Phase) {
 	m.ticking = "board"
 	// Phase latch: posted writes become visible to everyone, one commit
 	// event each — the trace shows not just THAT state changed but WHERE.
+	// A write with nowhere to land stops the machine here (deadWrite).
 	for _, w := range m.bus.pending {
+		if m.Halted {
+			break
+		}
 		m.commit(w)
 	}
 	m.bus.pending = m.bus.pending[:0]
 }
 
+// commit routes one latched write to the component whose window contains it.
 func (m *Motherboard) commit(w pendingWrite) {
-	for i, r := range m.readers {
-		if r == nil {
-			continue
-		}
-		base, size := r.Window()
-		if w.addr < base || w.addr >= base+size {
-			continue
-		}
-		name := m.components[i].Name()
-		switch {
-		case w.size == 1:
-			if bw, ok := m.components[i].(ByteWriter); ok {
-				detail := fmt.Sprintf("commit %s[0x%04x] <= byte 0x%02x", name, w.addr, uint8(w.val))
-				if br, ok := m.components[i].(ByteReader); ok {
-					if old, st := br.BusReadByte(w.addr); st == BusOK {
-						detail += fmt.Sprintf(" (was 0x%02x)", old)
-					}
-				}
-				bw.BusWriteByte(w.addr, uint8(w.val))
-				m.sink(Event{Major: m.Major, Phase: string(m.curPhase), Component: "board",
-					Kind: "latch", Detail: detail})
-			}
-		default:
-			if wr, ok := m.components[i].(Writer); ok {
-				detail := fmt.Sprintf("commit %s[0x%04x] <= 0x%08x", name, w.addr, w.val)
-				if old, st := r.Read(w.addr); st == BusOK {
-					detail += fmt.Sprintf(" (was 0x%08x)", old)
-				}
-				wr.Write(w.addr, w.val)
-				m.sink(Event{Major: m.Major, Phase: string(m.curPhase), Component: "board",
-					Kind: "latch", Detail: detail})
-			}
-		}
+	i, ok := m.route(w.addr)
+	if !ok {
+		m.deadWrite(w, BusNotConnected)
 		return
 	}
+	name := m.components[i].Name()
+	if w.size == 1 {
+		bw, ok := m.components[i].(ByteWriter)
+		if !ok {
+			m.deadWrite(w, BusNotPermitted)
+			return
+		}
+		detail := fmt.Sprintf("commit %s[0x%04x] <= byte 0x%02x", name, w.addr, uint8(w.val))
+		if br, ok := m.components[i].(ByteReader); ok {
+			if old, st := br.BusReadByte(w.addr); st == BusOK {
+				detail += fmt.Sprintf(" (was 0x%02x)", old)
+			}
+		}
+		bw.BusWriteByte(w.addr, uint8(w.val))
+		m.sink(Event{Major: m.Major, Phase: string(m.curPhase), Component: "board",
+			Kind: "latch", Detail: detail})
+		return
+	}
+	wr, ok := m.components[i].(Writer)
+	if !ok {
+		m.deadWrite(w, BusNotPermitted)
+		return
+	}
+	detail := fmt.Sprintf("commit %s[0x%04x] <= 0x%08x", name, w.addr, w.val)
+	if old, st := m.readers[i].Read(w.addr); st == BusOK {
+		detail += fmt.Sprintf(" (was 0x%08x)", old)
+	}
+	wr.Write(w.addr, w.val)
+	m.sink(Event{Major: m.Major, Phase: string(m.curPhase), Component: "board",
+		Kind: "latch", Detail: detail})
 }
 
-// deliverInterrupts hands at most one raised line to the CPU per cycle. A
-// line refused (IE clear) stays raised and retries at the next edge.
+// deadWrite is a posted write with nowhere to land — no component owns the
+// address, or the owner refuses it. Same class of mistake as a load from
+// nowhere, and the machine refuses it just as loudly: the latch stops the
+// machine with a fault naming the instruction that posted the write when it
+// could (WriteSite). A store must never vanish silently.
+func (m *Motherboard) deadWrite(w pendingWrite, st BusStatus) {
+	sized := "word"
+	if w.size == 1 {
+		sized = "byte"
+	}
+	m.sink(Event{Major: m.Major, Phase: string(m.curPhase), Component: "board",
+		Kind: "fault",
+		Detail: fmt.Sprintf("%s write to 0x%04x: %s (dropped at latch)",
+			sized, w.addr, st)})
+	m.Halt(Fault{Kind: "bus_" + string(st), Addr: w.addr, PC: w.site.PC,
+		Phase: m.curPhase, Word: w.site.Word})
+}
+
+// deliverInterrupts hands at most one raised line to the CPU per cycle. Lines
+// are level-triggered: a line refused (IE clear) stays raised and retries at
+// the next edge, and a line the device has already cleared (acknowledged
+// before delivery) is discarded — the board re-samples the device's current
+// line level rather than trusting the raise-time queue.
 func (m *Motherboard) deliverInterrupts() {
 	if len(m.irqs) == 0 || m.irqTarget == nil {
 		return
 	}
-	taken, fromPC, fromStatus := m.irqTarget.TakeInterrupt(TrapVector)
-	if !taken {
+	for i := 0; i < len(m.irqs); i++ {
+		line := m.irqs[i]
+		if !m.lineRaised(line) {
+			m.irqs = append(m.irqs[:i], m.irqs[i+1:]...)
+			m.sink(Event{Major: m.Major, Phase: string(PhaseFetch), Component: "board",
+				Kind:   "irq_cleared",
+				Detail: fmt.Sprintf("%s: cleared before delivery (acknowledged)", line)})
+			i--
+			continue
+		}
+		taken, fromPC, fromStatus, toStatus := m.irqTarget.TakeInterrupt(TrapVector)
+		if !taken {
+			return
+		}
+		m.irqs = append(m.irqs[:i], m.irqs[i+1:]...)
+		m.sink(Event{Major: m.Major, Phase: string(PhaseFetch), Component: "board",
+			Kind: "interrupt",
+			Detail: fmt.Sprintf("%s: pc 0x%04x -> 0x%04x, status 0x%02x -> 0x%02x",
+				line, fromPC, TrapVector, fromStatus, toStatus)})
 		return
 	}
-	line := m.irqs[0]
-	m.irqs = m.irqs[1:]
-	m.sink(Event{Major: m.Major, Phase: string(PhaseFetch), Component: "board",
-		Kind: "interrupt",
-		Detail: fmt.Sprintf("%s: pc 0x%04x -> 0x%04x, status 0x%02x -> 0x%02x",
-			line, fromPC, TrapVector, fromStatus, fromStatus&^StatusIE)})
+}
+
+// lineRaised re-samples one raised line's owner: a device that has since
+// cleared its line (ack, disarm) reports false, and the queued line is
+// discarded. Lines whose owner cannot report a level are treated as raised.
+func (m *Motherboard) lineRaised(line string) bool {
+	for _, c := range m.components {
+		if c.Name() != line {
+			continue
+		}
+		if l, ok := c.(InterruptLine); ok {
+			return l.InterruptRaised()
+		}
+		return true
+	}
+	return false // owner gone: nothing drives the wire
 }
 
 // route finds the window owner for addr: (index, ok).
@@ -272,9 +230,9 @@ func (m *Motherboard) ReadBus(addr uint32) (uint32, BusStatus) {
 }
 
 // WriteBus implements Env. Posts a write; visible after the phase latch.
-func (m *Motherboard) WriteBus(addr uint32, val uint32) {
+func (m *Motherboard) WriteBus(addr uint32, val uint32, site WriteSite) {
 	m.event("bus_write_post", fmt.Sprintf("addr=0x%04x val=0x%08x", addr, val))
-	m.bus.pending = append(m.bus.pending, pendingWrite{addr: addr, val: val, size: 4})
+	m.bus.pending = append(m.bus.pending, pendingWrite{addr: addr, val: val, size: 4, site: site})
 }
 
 // ReadBusByte implements Env for byte-granular loads. A window owner without
@@ -296,13 +254,14 @@ func (m *Motherboard) ReadBusByte(addr uint32) (uint8, BusStatus) {
 }
 
 // WriteBusByte implements Env: posts a byte write; visible after the latch.
-func (m *Motherboard) WriteBusByte(addr uint32, val uint8) {
+func (m *Motherboard) WriteBusByte(addr uint32, val uint8, site WriteSite) {
 	m.event("bus_write_byte_post", fmt.Sprintf("addr=0x%04x val=0x%02x", addr, val))
-	m.bus.pending = append(m.bus.pending, pendingWrite{addr: addr, val: uint32(val), size: 1})
+	m.bus.pending = append(m.bus.pending, pendingWrite{addr: addr, val: uint32(val), size: 1, site: site})
 }
 
 // RaiseInterrupt implements Env: a component raises its line. Level-triggered —
-// the line stays up until the device itself clears it (usually on MMIO ack).
+// the line stays up until the device itself clears it (usually on MMIO ack),
+// and the board re-samples the device at every delivery edge.
 func (m *Motherboard) RaiseInterrupt(line string) {
 	for _, l := range m.irqs {
 		if l == line {
@@ -323,38 +282,46 @@ func (m *Motherboard) event(kind, detail string) {
 	m.sink(Event{Major: m.Major, Phase: string(m.curPhase), Component: m.ticking, Kind: kind, Detail: detail})
 }
 
-// Halt stops the machine at the end of the current phase. The first fault wins.
+// Halt implements Env: stop the machine with a fault record. The first fault
+// wins.
 func (m *Motherboard) Halt(f Fault) {
-	if m.Fault == nil {
+	if m.fault == nil {
 		fcopy := f
-		m.Fault = &fcopy
+		m.fault = &fcopy
 	}
 	m.Halted = true
 }
 
-// HaltedBy reports the terminal fault, or a clean halt if none.
-func (m *Motherboard) HaltedBy() Fault {
-	if m.Fault != nil {
-		return *m.Fault
+// CleanHalt implements Env: the program ran halt. A clean stop is not a fault
+// — no record, no Blue Screen — the board just marks the machine stopped.
+func (m *Motherboard) CleanHalt() {
+	m.Halted = true
+}
+
+// Fault returns the terminal fault record, or nil if the machine halted
+// cleanly, ran out of budget mid-flight, or is still running.
+func (m *Motherboard) Fault() *Fault { return m.fault }
+
+// StopReason reports how (or whether) the machine stopped:
+//
+//	StopHalt    the program ran halt
+//	StopFault   a component faulted (see Fault)
+//	StopBudget  the run's cycle cap was reached mid-flight: a pause,
+//	            resumable by calling Run again
+//	StopNone    nothing has run
+//
+// Never conflate StopBudget with StopHalt: "no fault" is not "halted".
+func (m *Motherboard) StopReason() StopReason {
+	switch {
+	case m.fault != nil:
+		return StopFault
+	case m.Halted:
+		return StopHalt
+	case m.Major > 0:
+		return StopBudget
+	default:
+		return StopNone
 	}
-	return Fault{Kind: "halt"}
-}
-
-// pendingWritesForTest exposes posted-but-unlatched writes (tests only).
-func (m *Motherboard) pendingWritesForTest() []pendingWrite {
-	return m.bus.pending
-}
-
-// StateReporter is optionally implemented by components that can dump state
-// (used by Blue-Screen-style snapshots and the CLI).
-type StateReporter interface {
-	StateDump() string
-}
-
-// VerboseStateReporter is implemented by components with a fuller dump for
-// the curious learner (CLI -dump-full).
-type VerboseStateReporter interface {
-	StateDumpVerbose() string
 }
 
 // StateString dumps every component that reports state, in tick order.
@@ -395,12 +362,16 @@ func (m *Motherboard) DescribeWindows() string {
 }
 
 func (m *Motherboard) describeHalt() string {
-	f := m.HaltedBy()
-	switch f.Kind {
-	case "halt":
+	switch m.StopReason() {
+	case StopHalt:
 		return "clean halt"
-	default:
+	case StopFault:
+		f := m.fault
 		return fmt.Sprintf("stopped: %s (pc=0x%04x addr=0x%04x phase=%s)",
 			f.Kind, f.PC, f.Addr, f.Phase)
+	case StopBudget:
+		return "paused: budget exhausted (still running)"
+	default:
+		return "not started"
 	}
 }

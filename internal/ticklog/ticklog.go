@@ -32,7 +32,15 @@ type Event struct {
 	Detail    string
 }
 
-// Open creates/overwrites the trace database and stamps a run row.
+// SchemaVersion is the version of the .db schema written by this build. It is
+// stamped on every run row; readers refuse files written by a newer build
+// (motherboard.md §7: trace files are version-sensitive). Version 0 means a
+// file written before versioning existed; the migration in Open() upgrades it.
+const SchemaVersion = 1
+
+// Open creates or reopens the trace database and stamps a run row. Older
+// files are migrated in place: a runs table without schema_version gains it
+// with default 0 (legacy), and subsequent runs carry SchemaVersion.
 func Open(path, machineVersion, chapter string) (*Log, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -41,7 +49,8 @@ func Open(path, machineVersion, chapter string) (*Log, error) {
 	schema := `
 PRAGMA journal_mode=MEMORY;
 CREATE TABLE IF NOT EXISTS runs (
-  id INTEGER PRIMARY KEY, chapter TEXT, machine_version TEXT, started_at TEXT);
+  id INTEGER PRIMARY KEY, chapter TEXT, machine_version TEXT,
+  schema_version INTEGER NOT NULL DEFAULT 0, started_at TEXT);
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id INTEGER, tick_major INTEGER, phase TEXT, component TEXT, kind TEXT, detail TEXT);
@@ -53,14 +62,78 @@ CREATE TABLE IF NOT EXISTS snapshots (
 		db.Close()
 		return nil, err
 	}
-	res, err := db.Exec(`INSERT INTO runs (chapter, machine_version, started_at) VALUES (?,?,?)`,
-		chapter, machineVersion, time.Now().UTC().Format(time.RFC3339))
+	if err := migrateSchemaVersion(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	res, err := db.Exec(`INSERT INTO runs (chapter, machine_version, schema_version, started_at) VALUES (?,?,?,?)`,
+		chapter, machineVersion, SchemaVersion, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		db.Close()
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
 	return &Log{db: db, runID: id}, nil
+}
+
+// migrateSchemaVersion adds the schema_version column to files created before
+// versioning existed. Existing rows stay 0 (legacy, readable); only the
+// column is added, never rewritten.
+func migrateSchemaVersion(db *sql.DB) error {
+	has, err := hasColumn(db, "runs", "schema_version")
+	if err != nil || has {
+		return err
+	}
+	_, err = db.Exec(`ALTER TABLE runs ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 0`)
+	return err
+}
+
+// hasColumn reports whether table carries column (pragma_table_info is a
+// read-only table-valued function; table comes from code constants only).
+func hasColumn(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf(`SELECT name FROM pragma_table_info('%s')`, table))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+// latestRun returns the newest run's metadata. Files without the
+// schema_version column (written before versioning) read as version 0 — the
+// read-only exporters must not run DDL, so they branch on the column instead.
+func latestRun(db *sql.DB) (chapter, machineVersion string, schemaVersion int64, err error) {
+	has, err := hasColumn(db, "runs", "schema_version")
+	if err != nil {
+		return "", "", 0, err
+	}
+	if !has {
+		err = db.QueryRow(`SELECT chapter, machine_version FROM runs
+			WHERE id = (SELECT MAX(id) FROM runs)`).Scan(&chapter, &machineVersion)
+		return chapter, machineVersion, 0, err
+	}
+	err = db.QueryRow(`SELECT chapter, machine_version, schema_version FROM runs
+		WHERE id = (SELECT MAX(id) FROM runs)`).Scan(&chapter, &machineVersion, &schemaVersion)
+	return chapter, machineVersion, schemaVersion, err
+}
+
+// checkReadableSchema refuses files written by a newer build: the event
+// vocabulary and run metadata may have changed underneath us.
+func checkReadableSchema(schemaVersion int64) error {
+	if schemaVersion > SchemaVersion {
+		return fmt.Errorf("trace was written with schema_version %d; this build reads up to %d — update AmmaBoard to read it",
+			schemaVersion, SchemaVersion)
+	}
+	return nil
 }
 
 // Add buffers one event; events are written in batches per major tick.
@@ -128,10 +201,11 @@ func Export(path string, w io.Writer) error {
 	}
 	defer db.Close()
 
-	var chapter, machineVersion string
-	err = db.QueryRow(`SELECT chapter, machine_version FROM runs
-		WHERE id = (SELECT MAX(id) FROM runs)`).Scan(&chapter, &machineVersion)
+	chapter, machineVersion, schemaVersion, err := latestRun(db)
 	if err != nil {
+		return err
+	}
+	if err := checkReadableSchema(schemaVersion); err != nil {
 		return err
 	}
 	rows, err := db.Query(`
@@ -377,6 +451,12 @@ func EventsReadback(path string) ([]Event, error) {
 		return nil, err
 	}
 	defer db.Close()
+
+	if _, _, schemaVersion, err := latestRun(db); err != nil {
+		return nil, err
+	} else if err := checkReadableSchema(schemaVersion); err != nil {
+		return nil, err
+	}
 	rows, err := db.Query(`
 		SELECT tick_major, phase, component, kind, detail FROM events
 		WHERE run_id = (SELECT MAX(id) FROM runs)

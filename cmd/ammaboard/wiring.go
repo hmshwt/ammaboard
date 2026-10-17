@@ -8,33 +8,37 @@ package main
 
 import (
 	"ammaboard/internal/machine"
+	"ammaboard/internal/machine/cpu"
+	"ammaboard/internal/machine/echo"
+	"ammaboard/internal/machine/ram"
+	"ammaboard/internal/machine/timer"
 	"ammaboard/internal/ticklog"
 )
 
 // wiring holds every component instance on this board.
 type wiring struct {
 	board *machine.Motherboard
-	ram   *machine.RAM
-	cpu   *machine.CPU
-	timer *machine.Timer
-	echo  *machine.EchoDevice // optional
+	ram   *ram.RAM
+	cpu   *cpu.CPU
+	timer *timer.Timer
+	echo  *echo.Device // optional
 }
 
 // buildBoard wires AmmaBoard-2: RAM first (its window owns 0..16KB), then the
 // CPU, then the timer, then any optional devices. Order = tick order; windows
 // route the bus.
-func buildBoard(log *ticklog.Log, echo bool) *wiring {
+func buildBoard(log *ticklog.Log, withEcho bool) *wiring {
 	w := &wiring{
-		ram:   machine.NewRAM(ramBase, ramSize),
-		cpu:   machine.NewCPU(entryPoint),
-		timer: machine.NewTimer(timerBase),
+		ram:   ram.New(ramBase, ramSize),
+		cpu:   cpu.New(entryPoint),
+		timer: timer.New(timerBase),
 	}
 	w.board = machine.New(func(e machine.Event) { log.Add(ticklog.Event(e)) })
 	w.board.Attach(w.ram)
 	w.board.Attach(w.cpu)
 	w.board.Attach(w.timer)
-	if echo {
-		w.echo = machine.NewEchoDevice(echoBase)
+	if withEcho {
+		w.echo = echo.New(echoBase)
 		w.board.Attach(w.echo)
 	}
 	return w

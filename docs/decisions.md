@@ -136,3 +136,84 @@ change event kinds and must precede any golden fixture.
   `bluescreen` snapshot row; fetch faults now also log a `fault` event so the chain is
   complete. The dead `CPU.Fault` field was removed; fault words travel in `Fault.Word`
   for every fault kind. Clean halts never blue-screen.
+
+## Defect fixes + structure pass (owner-requested, 2026-10-17)
+
+- **D28 — immediates are strictly 18-bit signed.** `isa.Encode` now refuses
+  `imm > 2^17-1` (previously 2^17..2^18-1 passed Encode but Decode sign-extended
+  them into the negative range — `131072` silently executed as `-131072`). The
+  assembler surfaces Encode errors as line-numbered source errors via a small
+  `enc` helper; `MustEncode` is no longer used in `asm`, so bad source never
+  panics the tool. ISA stage 3 (base+limit, chunks) inherits the same edge.
+- **D29 — writes that land nowhere fault at the latch, like loads.** A posted
+  write no window owns (or whose owner refuses it — byte into word-only MMIO,
+  unaligned word) used to be silently dropped while the same address faulted on
+  load. The broker now stops the machine in `commit()`: a `fault` event
+  (`… dropped at latch`) plus `bus_NOT_CONNECTED` / `bus_NOT_PERMITTED` on the
+  board. `Env.WriteBus`/`WriteBusByte` carry a `WriteSite{PC,Word}`, filled by
+  the CPU, so the fault names the posting instruction and the Blue Screen can
+  disassemble it; unattributable writers pass the zero site. Stores and loads
+  now refuse nonsense symmetrically.
+- **D30 — interrupt lines are level-triggered all the way down: the board
+  re-samples the device at the delivery edge.** New `InterruptLine` contract
+  (`InterruptRaised() bool`), implemented by the timer from its own `pending`;
+  the raise-time queue no longer delivers stale events. A line acknowledged
+  before delivery is discarded with a board `irq_cleared` event; a line refused
+  while IE is clear stays up and retries (unchanged). Removes the duplicated
+  controller state that could deliver after an ack.
+- **D31 — `budget_exhausted` is its own stop reason.** `-max` is a harness cap,
+  not a machine event: a run that reaches the cap mid-flight was reported as
+  "clean halt" because "no fault" was conflated with "halted". `HaltedBy()` on
+  board and CPU now returns kind `budget_exhausted` when nothing halted; the CLI
+  prints "budget exhausted (program did not halt)", the state banner says "budget
+  exhausted (still running)" (pre-run: "not started"), the frozen snapshot is
+  `PAUSED` instead of `FROZEN`, and no Blue Screen is rendered (nothing faulted).
+  Clean halts and faults are unaffected.
+- **D32 — `.db` files carry `schema_version`.** `ticklog.SchemaVersion = 1`,
+  stamped on every run row; legacy files (pre-versioning) are migrated in place
+  — the column is added, old rows stay 0, never rewritten — and read-only
+  exporters treat a missing column as version 0 without running DDL. Both
+  `Export` and `EventsReadback` refuse files written by a *newer* schema instead
+  of misreading them. This is the versioning promise of motherboard.md §7 made
+  concrete; bump the constant whenever the schema changes.
+- **D33 — package per component is now real.** `internal/machine` holds only the
+  broker + contracts (machine.go) and the motherboard (motherboard.go); the
+  components live in `internal/machine/cpu`, `.../ram`, `.../timer`, `.../echo`,
+  and the Blue Screen in `.../bluescreen` — the package boundary enforces the
+  bus-only rule from motherboard.md §8. Inside `cpu`, one file per instruction
+  (`add.go`, `load_word.go`, `jump_if_not_equal.go`, …) registered in `init()`;
+  the execute dispatch (execute.go) is untouched when instructions are added
+  (duplicate registration panics at startup). Component tests live in their
+  package; board-level integration tests are an external `machine_test` package
+  so the root imports no components.
+- **D34 — stop state is not a fault (supersedes the kind soup of D31).**
+  `Fault` is a fault taxonomy again; how the machine *ended* is a separate,
+  first-class value: `StopReason` ∈ {none (Run not called), `halt` (the program
+  ran halt), `fault` (see `Motherboard.Fault()`), `budget_exhausted` (the run's
+  cycle cap was reached mid-flight)}. `Env` gains `CleanHalt()` beside
+  `Halt(Fault)`: a clean stop carries no record. `HaltedBy()` is gone in favour
+  of `Fault() *Fault` (nil unless something faulted) and `StopReason()`. Budget
+  exhaustion is explicitly a *pause*: the machine is neither halted nor faulted,
+  so another `Run` resumes it. The Blue Screen renders only for `StopFault` (a
+  screen anywhere else would be a lie); the frozen snapshot is `PAUSED` on a cap
+  and `FROZEN` on halt/fault.
+- **D35 — the default cycle budget is 10,000 majors (`-max 0` = uncapped).**
+  100,000 was picked before anything was measured; a runaway at that cap wrote
+  ~10⁶ event rows before the user saw anything. 10,000 is an order of magnitude
+  above the longest chapter program (~31 ticks) and about a second of worst-case
+  work including SQLite writes and text export, so a runaway loop fails fast and
+  cheap. `-max 0` opts out for long honest runs; the CLI rejects negatives.
+- **D36 — one ISA table keeps assembler and CPU in parity.** `isa.Specs` is the
+  single source of truth for every instruction: opcode, mnemonic, operand
+  `Form` (zero/RRR/RRI/load/store/branch/call/goto). The assembler no longer
+  switches on mnemonics — it parses by form with one encoder per form, so a new
+  instruction whose form exists needs *no* assembler change; `Opcode.Name()`
+  and the reserved-fields rule read from the table too. The CPU keeps one file
+  per instruction and exposes `Executable`/`Executables` for the conformance
+  suite in `internal/isa/parity_test.go`: every spec must assemble to its own
+  opcode and have an executor, and the CPU must not register an opcode that has
+  no spec (the build fails on drift). Tightening: `halt` now follows the
+  reserved-fields rule (operand fields must be zero, like the other
+  zero-operand ops) — hand-rolled halt words with junk fields fault instead of
+  quietly working.
+

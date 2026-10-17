@@ -83,6 +83,20 @@ func TestErrors(t *testing.T) {
 	}
 }
 
+// Out-of-range immediates are source errors, never panics: 18-bit two's
+// complement is the hard edge of the encoding (see isa.Encode).
+func TestImmediateOutOfRangeIsAnError(t *testing.T) {
+	for _, src := range []string{
+		"add_number r1, r0, 131072",  // 2^17: fits in 18 bits, not in signed
+		"add_number r1, r0, -131073", // one below the signed minimum
+		"store_word r1, 262144(r2)",  // out of range via a memory operand
+	} {
+		if _, err := Assemble(src); err == nil {
+			t.Errorf("expected an error for %q", src)
+		}
+	}
+}
+
 // Stage-2 mnemonics encode the documented ops.
 func TestStage2Mnemonics(t *testing.T) {
 	words, err := Assemble(`

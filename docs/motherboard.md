@@ -181,8 +181,11 @@ surfaces in physics class). Simplifications are deferrals with a name, never sil
   `jump_if_not_equal.go`, …):
   idiomatic Go, zero ceremony, one obvious place per instruction. Families that share shape may
   merge into one file (`logic.go`) later without breaking anything. Instructions registered in
-  a registry keyed by mnemonic; adding an instruction = add a file + register it + its tests,
-  execute loop untouched.
+  a registry keyed by **opcode** in `init()`; adding an instruction = add a row to `isa.Specs`
+  (opcode, mnemonic, operand form) + a file in `package cpu` + its tests, execute loop
+  untouched. The ISA table is the single source of truth shared with the assembler — the
+  assembler parses by form and never switches on mnemonics, and a conformance suite
+  (`internal/isa/parity_test.go`) fails the build if any layer drifts.
 - **One table-driven test harness per component**; every instruction gets the same style of
   golden register/memory cases. Uniform test shape = uniform contribution shape.
 - **Wiring in `main`** (`main/wiring.go`): construct components, hand to motherboard. Later

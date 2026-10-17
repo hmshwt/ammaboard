@@ -2,6 +2,8 @@ package ticklog
 
 import (
 	"bytes"
+	"database/sql"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,5 +118,123 @@ func TestExportReadableFormat(t *testing.T) {
 	}
 	if !strings.Contains(s, "\n       1 FETCH") {
 		t.Error("cycle contents must be indented under their dashed rule")
+	}
+}
+
+// ---- schema_version: stamped, migrated, and enforced on read ----
+
+// querySchemaVersion reads one run row's schema_version with a raw connection.
+func querySchemaVersion(t *testing.T, path string, runID int64) int64 {
+	t.Helper()
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	var v int64
+	if err := raw.QueryRow(`SELECT schema_version FROM runs WHERE id = ?`, runID).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+func TestSchemaVersionStamped(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "v.db")
+	log, err := Open(db, "AmmaBoard-2", "poc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := querySchemaVersion(t, db, 1); got != SchemaVersion {
+		t.Errorf("new runs must carry schema_version %d, got %d", SchemaVersion, got)
+	}
+}
+
+// A file written before versioning existed is migrated in place: the column
+// appears, old rows stay 0 (legacy), and new runs carry the current version.
+func TestSchemaVersionMigratesLegacyFile(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "legacy.db")
+	raw, err := sql.Open("sqlite", db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = raw.Exec(`
+CREATE TABLE runs (id INTEGER PRIMARY KEY, chapter TEXT, machine_version TEXT, started_at TEXT);
+CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER,
+  tick_major INTEGER, phase TEXT, component TEXT, kind TEXT, detail TEXT);
+CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER,
+  tick_major INTEGER, tick_minor TEXT, kind TEXT, state_blob TEXT);
+INSERT INTO runs (chapter, machine_version, started_at) VALUES ('poc','AmmaBoard-1','2026-01-01T00:00:00Z');
+INSERT INTO events (run_id, tick_major, phase, component, kind, detail) VALUES (1,1,'FETCH','cpu','fetch','pc=0x0000');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	log, err := Open(db, "AmmaBoard-2", "poc")
+	if err != nil {
+		t.Fatalf("Open must migrate a legacy file, got: %v", err)
+	}
+	log.Add(Event{Major: 1, Component: "board", Kind: "major"})
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := querySchemaVersion(t, db, 1); got != 0 {
+		t.Errorf("legacy run must stay version 0, got %d", got)
+	}
+	if got := querySchemaVersion(t, db, 2); got != SchemaVersion {
+		t.Errorf("new run after migration must be version %d, got %d", SchemaVersion, got)
+	}
+	// The legacy events are still present (readable, never rewritten).
+	raw2, err := sql.Open("sqlite", db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := raw2.QueryRow(`SELECT COUNT(*) FROM events WHERE run_id = 1`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	raw2.Close()
+	if n != 1 {
+		t.Errorf("legacy event row lost in migration: count=%d, want 1", n)
+	}
+	// Export still works (it exports the newest run, per the read contract).
+	var buf bytes.Buffer
+	if err := Export(db, &buf); err != nil {
+		t.Fatalf("export after migration: %v", err)
+	}
+}
+
+// A trace written by a newer build is refused, not misread.
+func TestReaderRefusesNewerSchema(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "future.db")
+	log, err := Open(db, "AmmaBoard-99", "poc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Add(Event{Major: 1, Component: "board", Kind: "major"})
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := sql.Open("sqlite", db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`UPDATE runs SET schema_version = ?`, SchemaVersion+1); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	if err := Export(db, io.Discard); err == nil {
+		t.Error("Export must refuse a newer schema version")
+	}
+	if _, err := EventsReadback(db); err == nil {
+		t.Error("EventsReadback must refuse a newer schema version")
 	}
 }

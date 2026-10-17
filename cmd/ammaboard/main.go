@@ -4,10 +4,12 @@
 //
 // Usage:
 //
-//	ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 100000] [-echo]
+//	ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max N] [-echo] [-dump-full]
 //
-// The -echo flag wires an extra EchoDevice at 0x4000 — the pluggability proof
-// (zero edits anywhere else).
+// The -echo flag wires an extra echo device at 0x4000 — the pluggability proof
+// (zero edits anywhere else). -max caps the run (default 10000 major ticks,
+// 0 = no cap). A run that hits the cap without halting is paused, not stopped:
+// it reports "budget exhausted (program did not halt)".
 package main
 
 import (
@@ -18,6 +20,7 @@ import (
 
 	"ammaboard/internal/asm"
 	"ammaboard/internal/machine"
+	"ammaboard/internal/machine/bluescreen"
 	"ammaboard/internal/ticklog"
 )
 
@@ -30,16 +33,20 @@ const (
 	entryPoint     = 0x0000
 	defaultDB      = "ammaboard.db"
 	defaultTrace   = "trace.txt"
+	// defaultMaxMajors caps a run so a runaway program fails fast without
+	// flooding the log: an order of magnitude above the longest chapter
+	// program, and about a second of work in the worst case. 0 = no cap.
+	defaultMaxMajors = 10000
 )
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 100000] [-echo] [-dump-full]")
+		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 10000] [-echo] [-dump-full]")
 		os.Exit(2)
 	}
 	var dbPath, tracePath = defaultDB, defaultTrace
 	var maxStr string
-	var echo, dumpFull bool
+	var echoOn, dumpFull bool
 	valueFlags := map[string]*string{
 		"-o":     &dbPath,
 		"-trace": &tracePath,
@@ -63,7 +70,7 @@ func main() {
 		}
 		switch a {
 		case "-echo":
-			echo = true
+			echoOn = true
 		case "-dump-full":
 			dumpFull = true
 		default:
@@ -74,11 +81,11 @@ func main() {
 			pos = append(pos, a)
 		}
 	}
-	maxMajors := 100000
+	maxMajors := defaultMaxMajors
 	if maxStr != "" {
 		n, err := strconv.Atoi(maxStr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ammaboard: -max wants a number, got %q\n", maxStr)
+		if err != nil || n < 0 {
+			fmt.Fprintf(os.Stderr, "ammaboard: -max wants a non-negative number, got %q (0 = no cap)\n", maxStr)
 			os.Exit(2)
 		}
 		maxMajors = n
@@ -87,13 +94,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [flags]")
 		os.Exit(2)
 	}
-	if err := run(pos[0], dbPath, tracePath, maxMajors, echo, dumpFull); err != nil {
+	if err := run(pos[0], dbPath, tracePath, maxMajors, echoOn, dumpFull); err != nil {
 		fmt.Fprintln(os.Stderr, "ammaboard:", err)
 		os.Exit(1)
 	}
 }
 
-func run(srcPath, dbPath, tracePath string, maxMajors int, echo, dumpFull bool) error {
+func run(srcPath, dbPath, tracePath string, maxMajors int, echoOn, dumpFull bool) error {
 	src, err := os.ReadFile(srcPath)
 	if err != nil {
 		return err
@@ -109,37 +116,41 @@ func run(srcPath, dbPath, tracePath string, maxMajors int, echo, dumpFull bool) 
 	}
 	defer log.Close()
 
-	w := buildBoard(log, echo)
-	ram, board, cpu := w.ram, w.board, w.cpu
-	if err := ram.Load(entryPoint, words); err != nil {
+	w := buildBoard(log, echoOn)
+	if err := w.ram.Load(entryPoint, words); err != nil {
 		return err
 	}
 
-	if err := log.Snapshot(0, "BOOT", "initial", board.StateString(dumpFull)); err != nil {
+	if err := log.Snapshot(0, "BOOT", "initial", w.board.StateString(dumpFull)); err != nil {
 		return err
 	}
-	board.Run(maxMajors)
-	if err := log.Snapshot(board.Major, "FROZEN", "final", board.StateString(dumpFull)); err != nil {
+	w.board.Run(maxMajors)
+	reason := w.board.StopReason()
+	snapKind := "PAUSED" // budget cut-off: mid-flight, resumable
+	if reason == machine.StopHalt || reason == machine.StopFault {
+		snapKind = "FROZEN"
+	}
+	if err := log.Snapshot(w.board.Major, snapKind, "final", w.board.StateString(dumpFull)); err != nil {
 		return err
 	}
 	if err := log.Flush(); err != nil { // persist events before reading them back
 		return err
 	}
 
-	f := cpu.HaltedBy()
-	fmt.Printf("assembled %d words | ran %d major ticks | stopped: %s\n",
-		len(words), board.Major, haltSummary(f))
+	fmt.Printf("assembled %d words | ran %d major ticks | %s\n",
+		len(words), w.board.Major, stopSummary(w.board))
 	fmt.Println(strings.Repeat("─", 56))
-	if f.Kind != "halt" {
+	if reason == machine.StopFault {
 		// Not a clean stop: the kernel explains itself. The panel is also
 		// frozen into the log as its own snapshot — a fault is data.
-		bs := machine.BlueScreen(cpu, board, ram, readEvents(dbPath))
+		f := w.board.Fault()
+		bs := bluescreen.Render(w.cpu, w.board, w.ram, readEvents(dbPath))
 		fmt.Print(bs)
-		if err := log.Snapshot(board.Major, string(f.Phase), "bluescreen", bs); err != nil {
+		if err := log.Snapshot(w.board.Major, string(f.Phase), "bluescreen", bs); err != nil {
 			return err
 		}
 	} else {
-		fmt.Print(board.StateString(dumpFull))
+		fmt.Print(w.board.StateString(dumpFull))
 	}
 	fmt.Println(strings.Repeat("─", 56))
 	fmt.Printf("trace: %s + %s\n", dbPath, tracePath)
@@ -160,11 +171,21 @@ func readEvents(dbPath string) []machine.Event {
 	return out
 }
 
-func haltSummary(f machine.Fault) string {
-	if f.Kind == "halt" {
-		return "clean halt"
+// stopSummary is the one-line verdict, in the same vocabulary as StopReason.
+// A budget cut-off is "paused", not "stopped": the program neither halted nor
+// faulted — it just ran out of harness.
+func stopSummary(board *machine.Motherboard) string {
+	switch board.StopReason() {
+	case machine.StopHalt:
+		return "stopped: clean halt"
+	case machine.StopFault:
+		f := board.Fault()
+		return fmt.Sprintf("stopped: %s (pc=0x%04x addr=0x%04x phase=%s)", f.Kind, f.PC, f.Addr, f.Phase)
+	case machine.StopBudget:
+		return "paused: budget exhausted (program did not halt)"
+	default:
+		return "not started"
 	}
-	return fmt.Sprintf("%s (pc=0x%04x addr=0x%04x phase=%s)", f.Kind, f.PC, f.Addr, f.Phase)
 }
 
 func exportText(dbPath, tracePath string) error {
