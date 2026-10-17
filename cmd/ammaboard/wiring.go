@@ -12,7 +12,6 @@ import (
 	"ammaboard/internal/machine/echo"
 	"ammaboard/internal/machine/ram"
 	"ammaboard/internal/machine/timer"
-	"ammaboard/internal/ticklog"
 )
 
 // wiring holds every component instance on this board.
@@ -26,14 +25,15 @@ type wiring struct {
 
 // buildBoard wires AmmaBoard-2: RAM first (its window owns 0..16KB), then the
 // CPU, then the timer, then any optional devices. Order = tick order; windows
-// route the bus.
-func buildBoard(log *ticklog.Log, withEcho bool) *wiring {
+// route the bus. The sink receives every machine event: the CLI feeds it to
+// the SQLite log, the TUI keeps an in-memory tail.
+func buildBoard(sink func(machine.Event), withEcho bool) *wiring {
 	w := &wiring{
 		ram:   ram.New(ramBase, ramSize),
 		cpu:   cpu.New(entryPoint),
 		timer: timer.New(timerBase),
 	}
-	w.board = machine.New(func(e machine.Event) { log.Add(ticklog.Event(e)) })
+	w.board = machine.New(sink)
 	w.board.Attach(w.ram)
 	w.board.Attach(w.cpu)
 	w.board.Attach(w.timer)

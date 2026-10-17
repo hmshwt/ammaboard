@@ -214,3 +214,34 @@ func signExtend18(v uint32) int32 {
 	}
 	return int32(v)
 }
+
+// Disassemble renders one machine word back to assembly source, the way the
+// assembler would write it (numeric branch/call offsets, no labels). A word
+// that does not decode becomes a .word line with the reason — data areas are
+// honest about being data. Inverse of the assembler for every decodable word.
+func Disassemble(word uint32) string {
+	in, err := Decode(word)
+	if err != nil {
+		return fmt.Sprintf(".word 0x%08x  ; %v", word, err)
+	}
+	s := specByOp[in.Op]
+	switch s.Form {
+	case FormZero:
+		return s.Mnemonic
+	case FormRRR:
+		return fmt.Sprintf("%s r%d, r%d, r%d", s.Mnemonic, in.Rd, in.Rs, in.Rt)
+	case FormRRI:
+		return fmt.Sprintf("%s r%d, r%d, %d", s.Mnemonic, in.Rd, in.Rs, in.Imm)
+	case FormLoad:
+		return fmt.Sprintf("%s r%d, %d(r%d)", s.Mnemonic, in.Rd, in.Imm, in.Rs)
+	case FormStore:
+		return fmt.Sprintf("%s r%d, %d(r%d)", s.Mnemonic, in.Rt, in.Imm, in.Rs)
+	case FormBranch:
+		return fmt.Sprintf("%s r%d, r%d, %+d", s.Mnemonic, in.Rs, in.Rt, in.Imm)
+	case FormCall:
+		return fmt.Sprintf("%s %+d", s.Mnemonic, in.Imm)
+	case FormGoto:
+		return fmt.Sprintf("%s r%d", s.Mnemonic, in.Rs)
+	}
+	return fmt.Sprintf(".word 0x%08x", word)
+}

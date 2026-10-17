@@ -117,3 +117,43 @@ func TestUnknownMnemonicStillRefused(t *testing.T) {
 		t.Errorf("unknown mnemonic should be refused by name, got: %v", err)
 	}
 }
+
+// TestDisassembleRoundTrip: every decodable word re-assembles to itself from
+// its disassembly — the TUI program pane shows exactly what runs.
+func TestDisassembleRoundTrip(t *testing.T) {
+	cases := []struct {
+		op         isa.Opcode
+		rd, rs, rt uint8
+		imm        int32
+	}{
+		{isa.OpHalt, 0, 0, 0, 0},
+		{isa.OpAllowInterrupts, 0, 0, 0, 0},
+		{isa.OpAdd, 1, 2, 3, 0},
+		{isa.OpShiftRightArithmetic, 7, 6, 5, 0},
+		{isa.OpAddNumber, 4, 5, 0, -7},
+		{isa.OpLoadWord, 2, 3, 0, 64},
+		{isa.OpLoadByte, 1, 2, 0, 300},
+		{isa.OpStoreWord, 0, 3, 2, -8},
+		{isa.OpStoreByte, 0, 6, 4, 12},
+		{isa.OpJumpIfEqual, 0, 1, 2, 16},
+		{isa.OpJumpIfNotEqual, 0, 1, 2, -8},
+		{isa.OpCall, 0, 0, 0, 44},
+		{isa.OpGoto, 0, 1, 0, 0},
+	}
+	for _, c := range cases {
+		w := isa.MustEncode(c.op, c.rd, c.rs, c.rt, c.imm)
+		src := isa.Disassemble(w)
+		words, err := asm.Assemble(src)
+		if err != nil {
+			t.Errorf("%s: does not re-assemble: %v", src, err)
+			continue
+		}
+		if len(words) != 1 || words[0] != w {
+			t.Errorf("%s re-assembles to %08x, want %08x", src, words[0], w)
+		}
+	}
+	// Words that are not instructions say so honestly.
+	if s := isa.Disassemble(0xffffffff); !strings.Contains(s, ".word") {
+		t.Errorf("data word should disassemble as .word, got %q", s)
+	}
+}

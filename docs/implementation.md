@@ -3,7 +3,7 @@
 ## Layout
 ```
 cmd/ammaboard/            CLI entry; wiring.go constructs components and Attaches them
-internal/isa/             opcodes, encoding, Specs table, parity conformance test
+internal/isa/             opcodes, encoding, Specs table, disassembler, parity suite
 internal/asm/             two-pass assembler, form-driven (no per-mnemonic knowledge)
 internal/machine/         broker + contracts (machine.go), motherboard (motherboard.go)
 internal/machine/cpu/     CPU: one file per instruction, registry, execute dispatch
@@ -11,6 +11,7 @@ internal/machine/ram/     RAM component
 internal/machine/timer/   day-8 timer MMIO device
 internal/machine/echo/    demo echo device (pluggability proof)
 internal/machine/bluescreen/  fault panel renderer
+internal/ui/              TUI (bubbletea v2): three panes + shell over the live machine
 internal/ticklog/         SQLite event/snapshot log + text export
 ```
 
@@ -74,8 +75,12 @@ No custom binary trace format, ever.
 ## CLI
 ```
 ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 10000] [-echo] [-dump-full]
+ammaboard tui [program.amm]
 ```
 - Default wiring: RAM 16KB at 0x0000, timer at 0x4020, entry 0x0000.
+- `run` is the batch path: full SQLite log + text export + verdict (see above).
+- `tui` is the interactive path (docs/ui.md): three panes + shell; no file = built-in
+  counter demo. Needs ≥141×26; speed = major ticks per frame (default ×1).
 - `-max N`: cycle cap. Default 10000 (~1s worst case including log + export — a runaway
   fails fast and cheap). `0` = uncapped; negatives rejected.
 - `-echo`: wires an echo device at 0x4000. `-dump-full`: print every RAM word, not the

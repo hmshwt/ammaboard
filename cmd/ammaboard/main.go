@@ -1,15 +1,20 @@
-// Command ammaboard runs the AmmaBoard-1 PoC: assemble a program, execute it
-// on the motherboard, persist the full tick log to SQLite, and export it as
-// readable text.
+// Command ammaboard runs and inspects the AmmaBoard machine.
 //
 // Usage:
 //
 //	ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max N] [-echo] [-dump-full]
+//	ammaboard tui [program.amm]
 //
-// The -echo flag wires an extra echo device at 0x4000 — the pluggability proof
-// (zero edits anywhere else). -max caps the run (default 10000 major ticks,
-// 0 = no cap). A run that hits the cap without halting is paused, not stopped:
-// it reports "budget exhausted (program did not halt)".
+// run assembles a program, executes it, persists the full tick log to SQLite,
+// and exports it as readable text. The -echo flag wires an extra echo device
+// at 0x4000 — the pluggability proof (zero edits anywhere else). -max caps the
+// run (default 10000 major ticks, 0 = no cap). A run that hits the cap without
+// halting is paused, not stopped: it reports "budget exhausted (program did
+// not halt)".
+//
+// tui is the interactive terminal UI (docs/ui.md): three panes over the live
+// machine plus a command shell. Without a program it loads the built-in
+// counter demo.
 package main
 
 import (
@@ -39,11 +44,42 @@ const (
 	defaultMaxMajors = 10000
 )
 
+func usage() {
+	fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 10000] [-echo] [-dump-full]")
+	fmt.Fprintln(os.Stderr, "       ammaboard tui [program.amm]   interactive UI; no file = built-in counter demo")
+}
+
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 10000] [-echo] [-dump-full]")
+	if len(os.Args) < 2 {
+		usage()
 		os.Exit(2)
 	}
+	args := os.Args[2:]
+	switch os.Args[1] {
+	case "run":
+		runMain(args)
+	case "tui":
+		if len(args) > 1 {
+			usage()
+			os.Exit(2)
+		}
+		src := ""
+		if len(args) == 1 {
+			src = args[0]
+		}
+		if err := tui(src); err != nil {
+			fmt.Fprintln(os.Stderr, "ammaboard:", err)
+			os.Exit(1)
+		}
+	default:
+		usage()
+		os.Exit(2)
+	}
+}
+
+// runMain is the batch path: assemble, run to a stop or the -max cap, log to
+// SQLite, export text, print the verdict.
+func runMain(args []string) {
 	var dbPath, tracePath = defaultDB, defaultTrace
 	var maxStr string
 	var echoOn, dumpFull bool
@@ -56,7 +92,6 @@ func main() {
 	// (Go's flag package stops at the first positional). Classic loop: the
 	// body skips flag values by advancing i.
 	var pos []string
-	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if target, ok := valueFlags[a]; ok {
@@ -116,7 +151,7 @@ func run(srcPath, dbPath, tracePath string, maxMajors int, echoOn, dumpFull bool
 	}
 	defer log.Close()
 
-	w := buildBoard(log, echoOn)
+	w := buildBoard(func(e machine.Event) { log.Add(ticklog.Event(e)) }, echoOn)
 	if err := w.ram.Load(entryPoint, words); err != nil {
 		return err
 	}

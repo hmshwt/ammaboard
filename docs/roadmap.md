@@ -8,11 +8,11 @@ never broken doors.
 | Done | Missing |
 |---|---|
 | Broker motherboard: phases, posted-write bus, event-sourced log | Chapter engine (`internal/chapters`) |
-| ISA stages 1–2 (20 instructions) + assembler + parity suite | TUI (`internal/ui`, bubbletea) |
-| Timer + interrupt delivery (level-triggered, shadow registers, trap vector) | Progress save, date-gating, release build |
-| Stop/fault model, Blue Screen, dropped-write faults, budget pause | Stage 3: base+limit, PRIV, MMU/TLB, `flush_tlb` |
-| SQLite log with `schema_version`, trace export v2 | Rogue/nice payloads + acceptance checker |
-| Determinism, parity, integration tests; CLI | Primers + rest-day reading sets (doors 1–11) |
+| ISA stages 1–2 (20 instructions) + assembler + parity suite | Progress save, date-gating, release build |
+| Timer + interrupt delivery (level-triggered, shadow registers, trap vector) | Stage 3: base+limit, PRIV, MMU/TLB, `flush_tlb` |
+| Stop/fault model, Blue Screen (CLI), dropped-write faults, budget pause | Rogue/nice payloads + acceptance checker |
+| SQLite log with `schema_version`, trace export v2 | TUI chapter views (fault overlay, timeline, editor) |
+| Determinism, parity, integration tests; CLI + TUI v1 (three panes + shell) | Primers + rest-day reading sets (doors 1–11) |
 
 ## Milestones
 | # | Milestone | Window | Status |

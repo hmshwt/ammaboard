@@ -1,7 +1,17 @@
 # TUI
 
-Draft — layout, keys, and hierarchy are open to revision with a real prototype. Stack:
-bubbletea + lipgloss + bubbles. The UI is the only layer issuing Cmds.
+Stack: `bubbletea/v2` + `lipgloss/v2` + `bubbles/v2` (ultraviolet arrives transitively
+via the Charm stack — never a direct dependency). The UI is the only layer issuing Cmds.
+
+**Status: v1.1 shipped** — three equal-height panes filling the frame (1 status line
+above, 3 shell lines below), each pane = fixed header + scrollable body: program
+(disassembly), machine (CPU view fixed, memory scrollable), numbers (stats fixed,
+tick log scrollable, one blank line between major ticks). Scrolling: `j/k` or arrows
+on the focused pane, `g/G` top/bottom, `f` re-follows (pc / newest events; auto-follow
+while running). The tracked instruction is white on dark green — a highlighted line,
+not a pointer. `ammaboard tui [file.amm]` (no file = built-in counter demo). Deferred:
+Blue Screen overlay (faults currently show in the state line + red log lines; the CLI
+renders the full panel), hex/asm toggle, timeline view, editor, mouse.
 
 ## Layout
 ```
@@ -19,11 +29,12 @@ bubbletea + lipgloss + bubbles. The UI is the only layer issuing Cmds.
   focus" + "vs reality" notes.
 
 ## Mechanics
-- One focused pane; tab / shift-tab cycles; maximize toggle (lazygit-style). Keys are
-  contextual to the focused pane.
-- Shell: `run`, `step [n]`, `load <payload>`, `diff`, `reset`, `export trace`, `seek
-  <tick>`, `watch <reg|addr>`, `break <addr|kind>`. Everything clickable is also a
-  command — the acceptance checker scripts the same surface.
+- One focused pane; tab / shift-tab cycles; maximize toggle (lazygit-style) — *v1: focus
+  border only, maximize pending*. Keys are contextual to the focused pane.
+- Shell (v1: `run`, `step [n]`, `reset`, `speed n`, `quit`, `help`; keys space/s/+−
+  mirror them). Later: `load <payload>`, `diff`, `export trace`, `seek <tick>`,
+  `watch <reg|addr>`, `break <addr|kind>` — the acceptance checker scripts the same
+  surface.
 - `?` = help overlay generated from the keybinding registry — docs cannot drift from
   behavior.
 - Progressive disclosure: chapters activate panes (day 4: registers + memory; timeline

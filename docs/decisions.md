@@ -81,3 +81,28 @@ golden-trace fixtures freeze the event vocabulary — flag objections before the
 - **D36** — `isa.Specs` is the single source of truth; the assembler is form-driven; the
   parity conformance suite fails the build on drift; halt's operand fields are now
   reserved like the other zero-operand ops.
+- **D37 — TUI v1 shipped (bubbletea v2 + lipgloss v2, Go 1.25-pinned).** Stack:
+  `charm.land/bubbletea/v2 v2.0.9` + `charm.land/lipgloss/v2 v2.0.6` + `charm.land/
+  bubbles/v2 v2.2.1` (textinput); ultraviolet rides along transitively exactly as
+  intended — never a direct require. v2.1.0/bubbletea and ultraviolet@latest need
+  Go ≥1.26, so the pins are the newest Go-1.25 tags; bump them together when the
+  toolchain moves. Scope (owner-confirmed): all three panes (disassembly with
+  next-fetch marker / registers + pc-page memory hexdump / stats + event tail),
+  shell `run · step [n] · reset · speed n · quit · help` mirrored by keys
+  (space/s/+−/:/?/q/tab), program via `ammaboard tui [file.amm]` with the built-in
+  counter as fallback, Blue Screen deferred (faults show in state line + log for
+  now). New: `isa.Disassemble` (word → source, assembler-round-tripped by test);
+  `buildBoard` takes an event sink so the TUI runs without SQLite; speed control
+  = N majors per 33ms frame, machine semantics untouched. v2 key gotchas learned:
+  space keypress is `KeySpace` (String "space", Text " "), not " ".
+- **D38 — TUI layout contract (owner-requested, v1.1).** The frame is 1 status line
+  + three equal-height panes + exactly 3 shell lines; pane equality is structural
+  (every pane padded/clipped to the same row count — locked by test). Each pane =
+  fixed header + scrollable body: machine keeps the CPU view fixed and scrolls
+  memory; numbers keeps stats fixed and scrolls the tick log, grouped by major
+  tick with one blank separator line between ticks. The tracked instruction is a
+  white-on-dark-green highlighted line (not a pointer character), backing up to
+  the halted/faulting instruction once stopped. Scrolling: `j/k` (or arrows) on
+  the focused pane, `g/G` ends, `f` re-follows (pc / newest events); follow is the
+  default and resumes on reset. Keyhints moved into the top bar (the shell owns
+  the bottom 3 lines); the program name shows the basename, not the full path.
