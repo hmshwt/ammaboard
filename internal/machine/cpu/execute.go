@@ -6,7 +6,7 @@ import (
 
 // execute is the one call the phase loop makes into an instruction: the
 // registry routes the decoded opcode to its file's exec function. Adding an
-// instruction never edits this file (motherboard.md §8).
+// instruction never edits this file (docs/implementation.md).
 func (c *CPU) execute(env machine.Env) {
 	in := c.decoded
 	if in == nil {

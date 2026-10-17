@@ -34,7 +34,7 @@ type Event struct {
 
 // SchemaVersion is the version of the .db schema written by this build. It is
 // stamped on every run row; readers refuse files written by a newer build
-// (motherboard.md §7: trace files are version-sensitive). Version 0 means a
+// (docs/implementation.md: trace files are version-sensitive). Version 0 means a
 // file written before versioning existed; the migration in Open() upgrades it.
 const SchemaVersion = 1
 

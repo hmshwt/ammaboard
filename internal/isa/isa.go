@@ -15,7 +15,7 @@ import "fmt"
 type Opcode uint8
 
 // Stage 1 "boot ten" (AmmaBoard-1) and stage 2 (AmmaBoard-2). Names are
-// plain-language; opcode order follows poc.md §1. See PLANNING.md.
+// plain-language; opcode order and growth stages follow docs/isa.md.
 const (
 	OpLoadWord       Opcode = iota + 1 // load_word  rd, imm(rs)
 	OpStoreWord                        // store_word rt, imm(rs)

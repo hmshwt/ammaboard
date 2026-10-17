@@ -1,6 +1,7 @@
 // Package echo implements the AmmaBoard pluggability proof: a minimal device
 // that owns a small address window (a one-word mailbox). It is wired onto the
-// board with one Attach call and zero edits anywhere else (poc.md criterion 5).
+// board with one Attach call and zero edits anywhere else (docs/implementation.md,
+// "Adding a device").
 package echo
 
 import (

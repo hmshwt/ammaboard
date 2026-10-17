@@ -4,7 +4,7 @@
 //
 // One file per instruction, registered by opcode in init() — adding an
 // instruction means adding a file + its tests and never touching the execute
-// loop (motherboard.md §8). Fault plumbing lives in the struct from day one,
+// loop (docs/implementation.md). Fault plumbing lives in the struct from day one,
 // dormant until day 10.
 package cpu
 
@@ -16,7 +16,7 @@ import (
 )
 
 // Status register bits. PRIV is stage-3 hardware: present in the encoding,
-// dormant until the base+limit day (poc.md §1).
+// dormant until the base+limit day (docs/isa.md, stage 3).
 const (
 	StatusIE   uint32 = 1 << 0 // interrupts enabled
 	StatusPriv uint32 = 1 << 1 // kernel mode (dormant)

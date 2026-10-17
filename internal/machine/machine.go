@@ -7,11 +7,11 @@
 // This package holds the contracts only. Components live in their own
 // packages — internal/machine/cpu, .../ram, .../timer, .../echo — one package
 // per component, so the package boundary enforces the bus-only rule
-// (motherboard.md §8).
+// (docs/implementation.md).
 package machine
 
 // MachineVersion names the machine generation: ISA stage, not app release
-// (motherboard.md §2). AmmaBoard-2 = boot ten + bytes/shifts/interrupts.
+// (docs/project.md). AmmaBoard-2 = boot ten + bytes/shifts/interrupts.
 const MachineVersion = "AmmaBoard-2"
 
 // TrapVector is where the board aims the pc when a pending interrupt line is

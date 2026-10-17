@@ -3,7 +3,7 @@ package main
 // wiring.go — the one place where hardware is chosen and wired onto the board.
 // Everything downstream (machine, ticklog) is ignorant of this file.
 //
-// Pluggability contract (poc.md criterion 5): adding a component = one type
+// Pluggability contract (docs/implementation.md): adding a component = one type
 // + one Attach call here. Nothing else in the codebase changes.
 
 import (
