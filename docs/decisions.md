@@ -131,3 +131,48 @@ golden-trace fixtures freeze the event vocabulary — flag objections before the
   refusal property, re-derived for the new geometry). The D36 parity suite and
   form-driven assembler made the migration a constants-block change plus test
   boundary moves — exactly the machinery's point.
+- **D41 — tuikit: a kernel over bubbletea/lipgloss; `internal/ui` becomes
+  `internal/tui`.** The hand-wired TUI leaks its layout contract into arithmetic
+  (`height-9`, `inner-7`), maintains its key help twice, and grows an if-chain
+  per overlay. Response: a small kernel (`internal/tuikit`, ~400-line cap) whose
+  only dependencies are bubbletea/v2, lipgloss/v2, and stdlib — never `bubbles`,
+  never `internal/*`, never ultraviolet. Compose, never wrap: the app root stays
+  a plain `tea.Model`; raw `tea.Msg`/`tea.Cmd` everywhere. Immediate mode
+  throughout: regions are pure per-frame derivations of (machine state + event
+  tail + owned view state) — no buffers, no dirty flags, no revision counters
+  (purity is the cache; caching lives only at immutability boundaries like the
+  pre-rendered blue screen). Ownership: machine state — nobody's (derive only);
+  scroll — panes; focus ring — screen; key precedence — regions; screen
+  selection — app. Full contract, primitive list, acceptance criteria (new pane
+  = one file + one registration line; kit fix first if `Update`'s switch or
+  frame arithmetic ever reopens), and non-goals: `docs/tuikit.md`.
+- **D42 — screens and a derived input grammar.** A screen is derived
+  presentation plus input grammar over one shared state (the postgres-view
+  analogy): own frame/min-size, own focus ring and scroll state, own keymap
+  scope. Flat named registry, atomic switch, no stacks, no nested screens;
+  `FullBleed` screens skip global chrome (the fault screen: shell hidden, its
+  own `r → reset`). Per-screen view state survives switching; machine reset
+  fans out to all screens. Input has exactly two mechanisms: capture (modal,
+  keyboard grab — preempts, esc releases) and routing (first consumer wins:
+  focused region → screen → global). Keymaps are derived per dispatch from the
+  same state that derives pixels — regions compose children via `Merge`
+  (first-consumer-wins, precedence written once and visible), so help and hints
+  are generated and cannot lie. `q`/`ctrl+c`/`esc` reserved globally; duplicate
+  keys across scopes are errors (`NoShadowing`). Chain depth stays 3; no
+  sub-focus rings (documented extension point).
+- **D43 — the wiring audit: `Verify`, `Issue`, `AssertCleanWiring`.** Making
+  wiring declarative data made it auditable: the assembled app is a value
+  graph (keymaps, frames, screens), so a pure `App.Verify() []Issue` derives a
+  conflict report — no reflection, no global registry, no init hooks; the
+  audit is a derivation over wiring values, the same philosophy as rendering.
+  One audit, three exposures: the kit test helper `AssertCleanWiring` (the real
+  pre-ship gate — in Go, CI is "compile time"), `ammaboard tui --check` (full
+  report without launching — fast feedback while authoring a screen), and
+  startup fail-fast before `tea.NewProgram()` (errors fatal with the printed
+  report, warnings to stderr — catches "edited wiring, skipped tests"). Errors:
+  reserved-key shadowing, cross-scope key duplicates, screen registry sanity,
+  focus-ring vs focusable count, frame unsolvable at declared minimum,
+  `FullBleed` screens must have an exit binding. Warnings: intra-region
+  `Merge` collisions, empty `Help`, hints wider than `minW`. Honest limits
+  recorded: no runtime terminal fit (the `TooSmall` notice owns that), no
+  semantic-duplicate detection, nothing that needs rendering.
