@@ -90,7 +90,7 @@ func TestBlueScreenOnUnknownOpcode(t *testing.T) {
 		"unknown_opcode fault, cycle 1, phase DECODE",
 		"wandered into data",
 		"not a known instruction",
-		"opcode field (bits 31..27) .......... 31 of 1..20",
+		"opcode field (bits 31..25) .......... 127 of 1..20",
 	} {
 		if !strings.Contains(bs, want) {
 			t.Errorf("blue screen missing %q\n%s", want, bs)

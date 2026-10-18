@@ -11,14 +11,22 @@
 - Sugar (`nop mov ret li jump …`) gets real opcode slots but must always expand to
   existing primitives — never new semantics — and ships only after the learner has
   hand-expanded it once (day 5).
-- Immediates are 18-bit two's complement, range `[-2^17, 2^17-1]`. `Encode` refuses wider
+- Immediates are 16-bit two's complement, range `[-2^15, 2^15-1]`. `Encode` refuses wider
   values (they would not round-trip through `Decode`'s sign extension).
+- Immediate reach rules for the whole roadmap: absolute labels and MMIO windows live in
+  `[0, 2^15-1]` — the signed-16 ceiling is exactly the last byte of the 32KB RAM hard
+  ceiling, so the whole board stays one-instruction addressable. Anything above `0x7fff`
+  (future devices, big virtual addresses) is pointer-register territory — the same idiom
+  MMU day teaches anyway.
 
 ## Encoding
 ```
-[ opcode:5 | rd:3 | rs:3 | rt:3 | immediate:18 ]
+[ opcode:7 | rd:3 | rs:3 | rt:3 | immediate:16 ]
 ```
-- First byte = verb + destination register. Operand order is destination-first, max three
+- The verb fills the top 7 bits (31..25) and fields pack contiguously beneath it — a
+  hexdump's leading digits still name the instruction. Opcodes 1..20 are defined;
+  21..127 are reserved headroom (stage 3–5 verbs, sugar like `li`), and decode to
+  nothing for now. Operand order is destination-first, max three
   operands, address syntax `offset(base)`.
 - Reserved bits must be zero; the machine faults on nonzero reserved bits (it refuses
   nonsense). Zero-operand ops enforce this in both `Encode` and `Decode`.

@@ -130,13 +130,16 @@ func TestDisassembleRoundTrip(t *testing.T) {
 		{isa.OpAllowInterrupts, 0, 0, 0, 0},
 		{isa.OpAdd, 1, 2, 3, 0},
 		{isa.OpShiftRightArithmetic, 7, 6, 5, 0},
-		{isa.OpAddNumber, 4, 5, 0, -7},
+		{isa.OpAddNumber, 4, 5, 0, 32767},  // positive imm ceiling
+		{isa.OpAddNumber, 4, 5, 0, -32768}, // negative imm floor (hi-adjust seed)
+		{isa.OpStoreWord, 0, 3, 2, -32768}, // store offset floor
 		{isa.OpLoadWord, 2, 3, 0, 64},
 		{isa.OpLoadByte, 1, 2, 0, 300},
 		{isa.OpStoreWord, 0, 3, 2, -8},
 		{isa.OpStoreByte, 0, 6, 4, 12},
 		{isa.OpJumpIfEqual, 0, 1, 2, 16},
 		{isa.OpJumpIfNotEqual, 0, 1, 2, -8},
+		{isa.OpJumpIfEqual, 0, 1, 2, 32767}, // branch reach ceiling
 		{isa.OpCall, 0, 0, 0, 44},
 		{isa.OpGoto, 0, 1, 0, 0},
 	}

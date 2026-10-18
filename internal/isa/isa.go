@@ -3,15 +3,18 @@
 // (opcode, mnemonic, operand form) and keeps the assembler and the CPU in
 // parity. Encoding is fixed 32-bit words:
 //
-//	[ opcode:5 | rd:3 | rs:3 | rt:3 | immediate:18 ]
+//	The verb fills the top 7 bits and fields pack contiguously below it (the
+//	hexdump's leading digits still name the instruction):
 //
-// byte 0 = verb + destination register. Spare/reserved bits must be zero; the
+//	[ opcode:7 | rd:3 | rs:3 | rt:3 | immediate:16 ]
+//
+// Spare/reserved bits must be zero; the
 // machine faults on nonzero reserved bits (it refuses nonsense).
 package isa
 
 import "fmt"
 
-// Opcode is a 5-bit verb.
+// Opcode is a 7-bit verb.
 type Opcode uint8
 
 // Stage 1 "boot ten" (AmmaBoard-1) and stage 2 (AmmaBoard-2). Names are
@@ -124,15 +127,15 @@ func (op Opcode) Name() string { return specByOp[op].Mnemonic }
 
 // Field positions and widths.
 const (
-	OpShift  = 27 // opcode:  bits 31..27
-	RdShift  = 24 // rd:      bits 26..24
-	RsShift  = 21 // rs:      bits 23..21
-	RtShift  = 18 // rt:      bits 20..18
-	ImmShift = 0  // imm:     bits 17..0 (18 bits, two's complement)
+	OpShift  = 25 // opcode:  bits 31..25
+	RdShift  = 22 // rd:      bits 24..22
+	RsShift  = 19 // rs:      bits 21..19
+	RtShift  = 16 // rt:      bits 18..16
+	ImmShift = 0  // imm:     bits 15..0 (16 bits, two's complement)
 
-	ImmMask = 1<<18 - 1
+	ImmMask = 1<<16 - 1
 	RegMask = 1<<3 - 1
-	OpMask  = 1<<5 - 1
+	OpMask  = 1<<7 - 1
 )
 
 // Instruction is one decoded machine word.
@@ -141,17 +144,20 @@ type Instruction struct {
 	Rd   uint8
 	Rs   uint8
 	Rt   uint8
-	Imm  int32 // sign-extended 18-bit immediate
+	Imm  int32 // sign-extended 16-bit immediate
 	Word uint32
 }
 
 // Encode packs fields into a machine word. Reserved bits must be zero.
 func Encode(op Opcode, rd, rs, rt uint8, imm int32) (uint32, error) {
-	// The immediate field is 18-bit two's complement: [-2^17, 2^17-1].
+	// The immediate field is 16-bit two's complement: [-2^15, 2^15-1].
 	// Accepting anything wider would not round-trip — Decode sign-extends
-	// bit 17, so e.g. 2^17 would silently decode as -2^17.
-	if imm < -(1<<17) || imm > (1<<17)-1 {
-		return 0, fmt.Errorf("immediate %d out of 18-bit signed range", imm)
+	// bit 15, so e.g. 2^15 would silently decode as -2^15. The range also
+	// covers every absolute byte address the board can ever have: the RAM
+	// hard ceiling is 32KB, so labels and MMIO stay one-instruction
+	// addressable.
+	if imm < -(1<<15) || imm > (1<<15)-1 {
+		return 0, fmt.Errorf("immediate %d out of 16-bit signed range", imm)
 	}
 	if rd > RegMask || rs > RegMask || rt > RegMask {
 		return 0, fmt.Errorf("register number out of range")
@@ -192,24 +198,23 @@ func Decode(word uint32) (Instruction, error) {
 		Rd:   uint8(word >> RdShift & RegMask),
 		Rs:   uint8(word >> RsShift & RegMask),
 		Rt:   uint8(word >> RtShift & RegMask),
-		Imm:  signExtend18(uint32(word) & ImmMask),
+		Imm:  signExtend16(uint32(word) & ImmMask),
 		Word: word,
 	}
-	// Reserved-bit check: opcode field is 5 bits inside bits 31..27; bits
-	// 18..17 above the immediate belong to fields, so the only illegal
-	// configuration is an opcode whose top bits overflow the 5-bit space —
-	// already covered. Imm is always 18 bits; nothing is reserved.
-	// Zero-operand (system + halt) ops are the exception: their fields ARE
-	// reserved and must be zero.
+	// Reserved-bit check: fields pack contiguously, so every non-op bit
+	// belongs to rd/rs/rt/imm — nothing is spare-by-position. The illegal
+	// configurations are precisely two: an opcode outside the defined range
+	// (its upper bits overflow the 7-bit space), and zero-operand (system +
+	// halt) ops, whose operand fields ARE reserved and must be zero.
 	if spec.Form == FormZero && (in.Rd != 0 || in.Rs != 0 || in.Rt != 0 || uint32(in.Imm)&ImmMask != 0) {
 		return Instruction{}, fmt.Errorf("%s: reserved fields must be zero in word 0x%08x", spec.Mnemonic, word)
 	}
 	return in, nil
 }
 
-// signExtend18 converts an 18-bit two's-complement field to int32.
-func signExtend18(v uint32) int32 {
-	if v&(1<<17) != 0 { // NB: parens required — & and << share precedence in Go
+// signExtend16 converts a 16-bit two's-complement field to int32.
+func signExtend16(v uint32) int32 {
+	if v&(1<<15) != 0 { // NB: parens required — & and << share precedence in Go
 		return int32(v | ^uint32(ImmMask))
 	}
 	return int32(v)

@@ -114,3 +114,20 @@ golden-trace fixtures freeze the event vocabulary — flag objections before the
   minimum height is now 28 (`minWidth` stays 141). Also recorded here: `esc`
   unwinds one level at a time — help overlay → main view, focused shell → panes;
   esc with nothing open is a no-op.
+- **D40 — ISA field re-layout: opcode 7 bits, immediate 16 bits.** Each field
+  width was either designed or derived: 3-bit registers (8 regs) and a 5-bit
+  opcode were sized upward, while the 18-bit immediate was just the arithmetic
+  remainder (32 − 5 − 9) — numberless — and opcode growth was nearly exhausted
+  (planned stages 3–5 + sugar ≈ 29 of 32 slots). Fields are now
+  `[ op:7 | rd:3 | rs:3 | rt:3 | imm:16 ]`, packed contiguously from the top:
+  op 31..25, rd 24..22, rs 21..19, rt 18..16, imm 15..0. Opcode VALUES stay
+  1..20; 21..127 are reserved headroom (`load_upper` under the `li` sugar is
+  first in line, deliberately not added in this change — pure re-layout, one
+  reviewable diff). The 16-bit signed immediate (±32,768) is a storytelling
+  boundary — half a word — and its ceiling coincides exactly with the top byte
+  of the 32KB RAM hard ceiling: absolute label/MMIO addressing covers the whole
+  board (`docs/isa.md` records the reach rule). Strictness carries over
+  unchanged: unknown opcodes and FormZero reserved words still fault (D28's
+  refusal property, re-derived for the new geometry). The D36 parity suite and
+  form-driven assembler made the migration a constants-block change plus test
+  boundary moves — exactly the machinery's point.

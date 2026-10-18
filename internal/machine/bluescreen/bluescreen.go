@@ -44,7 +44,7 @@ func Render(c *cpu.CPU, board *machine.Motherboard, r *ram.RAM, recent []machine
 		fmt.Fprintf(&b, "   machine word ........................ 0x%08x\n", f.Word)
 	} else if f.Word != 0 {
 		fmt.Fprintf(&b, "   machine word ........................ 0x%08x — not a known instruction\n", f.Word)
-		fmt.Fprintf(&b, "   opcode field (bits 31..27) .......... %d of 1..20\n", f.Word>>27)
+		fmt.Fprintf(&b, "   opcode field (bits 31..%d) .......... %d of 1..%d\n", isa.OpShift, f.Word>>isa.OpShift, isa.NumOpcodes)
 	}
 	if f.Addr != 0 {
 		fmt.Fprintf(&b, "   faulting address .................... 0x%04x\n", f.Addr)

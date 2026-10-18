@@ -10,8 +10,8 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 		want       uint32
 		wantImm    int32
 	}{
-		{OpHalt, 0, 0, 0, 0, 0x50000000, 0}, // opcode 10 in bits 31..27
-		{OpAdd, 1, 2, 3, 0, 0x194C0000, 0},  // op=3 rd=1 rs=2 rt=3
+		{OpHalt, 0, 0, 0, 0, 0x14000000, 0}, // opcode 10 in bits 31..25
+		{OpAdd, 1, 2, 3, 0, 0x06530000, 0},  // op=3 rd=1 rs=2 rt=3
 		{OpAddNumber, 4, 5, 0, -1, 0, -1},
 		{OpLoadWord, 2, 3, 0, 64, 0, 64},
 		{OpJumpIfNotEqual, 0, 1, 2, -8, 0, -8},
@@ -34,8 +34,8 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 }
 
 func TestImmediateRangeAndSign(t *testing.T) {
-	max := int32(1)<<17 - 1
-	min := -(int32(1) << 17)
+	max := int32(1)<<15 - 1
+	min := -(int32(1) << 15)
 	w := MustEncode(OpAddNumber, 1, 0, 0, max)
 	if in, _ := Decode(w); in.Imm != max {
 		t.Errorf("max imm: got %d want %d", in.Imm, max)
@@ -47,13 +47,13 @@ func TestImmediateRangeAndSign(t *testing.T) {
 	if _, err := Encode(OpAddNumber, 1, 0, 0, min-1); err == nil {
 		t.Error("out-of-range immediate should fail")
 	}
-	// The positive half is what sign extension breaks: 2^17 encodes in 18
-	// bits but decodes as -2^17. It must be refused, not silently wrapped.
-	if _, err := Encode(OpAddNumber, 1, 0, 0, 1<<17); err == nil {
-		t.Error("2^17 is not representable in 18-bit two's complement; should fail")
+	// The positive half is what sign extension breaks: 2^15 encodes in 16
+	// bits but decodes as -2^15. It must be refused, not silently wrapped.
+	if _, err := Encode(OpAddNumber, 1, 0, 0, 1<<15); err == nil {
+		t.Error("2^15 is not representable in 16-bit two's complement; should fail")
 	}
-	if _, err := Encode(OpAddNumber, 1, 0, 0, (1<<18)-1); err == nil {
-		t.Error("2^18-1 is not representable; should fail")
+	if _, err := Encode(OpAddNumber, 1, 0, 0, (1<<16)-1); err == nil {
+		t.Error("2^16-1 is not representable; should fail")
 	}
 	// Every accepted immediate must round-trip exactly.
 	for _, imm := range []int32{min, -1, 0, 1, max, max - 1, min + 1} {
