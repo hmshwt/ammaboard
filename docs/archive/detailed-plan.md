@@ -14,7 +14,7 @@ Today = 46 days out. Full 16 chapters = Dec 2027. Machine name per motherboard.m
 | Exists | Missing |
 |---|---|
 | Motherboard: broker, phased clock, event-sourced tick log | Chapter engine (`internal/chapters`) |
-| Boot-ten ISA + two-pass assembler + `examples/counter.amm` | TUI (`internal/ui`, bubbletea) |
+| Boot-ten ISA + two-pass assembler + `examples/counter.amb` | TUI (`internal/ui`, bubbletea) |
 | SQLite log + `trace.txt` export, BOOT/FROZEN snapshots | Progress save, date-gating, release build |
 | `TestDeterminism` (byte-identical event streams) | ISA stages 2–3; timer + interrupt controller |
 | Fault plumbing dormant in CPU (`Fault` in execute loop) | Base+limit, status reg, trap vector, MMU/TLB |

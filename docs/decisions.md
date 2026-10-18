@@ -41,7 +41,7 @@ golden-trace fixtures freeze the event vocabulary — flag objections before the
 - **D17** — `-dump-full` CLI flag for every-word RAM dumps.
 
 ## Content / tooling
-- **D18** — `examples/timer.amm` demonstrates the day-8 handler pattern (publish, ack,
+- **D18** — `examples/timer.amb` demonstrates the day-8 handler pattern (publish, ack,
   disarm; main spins on the published value).
 - **D19** — Labels are valid `add_number` immediates (absolute byte addresses) — the
   documented address-loading idiom (no `lui`).
@@ -89,7 +89,7 @@ golden-trace fixtures freeze the event vocabulary — flag objections before the
   toolchain moves. Scope (owner-confirmed): all three panes (disassembly with
   next-fetch marker / registers + pc-page memory hexdump / stats + event tail),
   shell `run · step [n] · reset · speed n · quit · help` mirrored by keys
-  (space/s/+−/:/?/q/tab), program via `ammaboard tui [file.amm]` with the built-in
+  (space/s/+−/:/?/q/tab), program via `ammaboard tui [file.amb]` with the built-in
   counter as fallback, Blue Screen deferred (faults show in state line + log for
   now). New: `isa.Disassemble` (word → source, assembler-round-tripped by test);
   `buildBoard` takes an event sink so the TUI runs without SQLite; speed control

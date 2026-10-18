@@ -45,7 +45,7 @@ func newTestModelWords(t *testing.T, words []uint32) Model {
 		}
 		return board, proc, mem
 	}
-	return New("test.amm", words, events, newMachine)
+	return New("test.amb", words, events, newMachine)
 }
 
 func TestParseShell(t *testing.T) {

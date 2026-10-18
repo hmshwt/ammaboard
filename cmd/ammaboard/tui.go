@@ -18,8 +18,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// counterDemo mirrors examples/counter.amm — the fallback program when tui
-// starts without a file. examples/counter.amm is the source of truth; keep in
+// counterDemo mirrors examples/counter.amb — the fallback program when tui
+// starts without a file. examples/counter.amb is the source of truth; keep in
 // sync by hand.
 const counterDemo = `
         add_number r1, r0, 0        ; i = 0            (r0 is always zero)
@@ -38,7 +38,7 @@ loop:   store_word r1, 0(r3)        ; mem[r3] = i
 // tui runs the terminal UI (docs/ui.md). An empty srcPath loads the built-in
 // counter demo.
 func tui(srcPath string) error {
-	name := "counter.amm (built-in)"
+	name := "counter.amb (built-in)"
 	src := counterDemo
 	if srcPath != "" {
 		b, err := os.ReadFile(srcPath)

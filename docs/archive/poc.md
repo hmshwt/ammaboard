@@ -72,7 +72,7 @@ PoC = **motherboard + boot-ten instructions + everything dumped to a file**. Bui
 Excluded: chapter engine, bubbletea UI, progress/save, rogue/nice payloads, TLB/cache/BaseLimit.
 
 **Status: all five criteria pass** (`go test ./...`, plus CLI smoke):
-1. Program runs — `examples/counter.amm`: 9 words, 25 major ticks, clean halt ✓
+1. Program runs — `examples/counter.amb`: 9 words, 25 major ticks, clean halt ✓
 2. Trace complete — SQLite `.db` + `trace.txt` export; BOOT/FROZEN snapshots ✓
 3. Determinism — `TestDeterminism`: two runs, identical event streams ✓
 4. Observability — every fetch/decode/execute/bus/latch logged with (major, phase, component) ✓

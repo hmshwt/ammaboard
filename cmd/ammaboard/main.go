@@ -2,8 +2,8 @@
 //
 // Usage:
 //
-//	ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max N] [-echo] [-dump-full]
-//	ammaboard tui [program.amm]
+//	ammaboard run program.amb [-o ammaboard.db] [-trace trace.txt] [-max N] [-echo] [-dump-full]
+//	ammaboard tui [program.amb]
 //
 // run assembles a program, executes it, persists the full tick log to SQLite,
 // and exports it as readable text. The -echo flag wires an extra echo device
@@ -45,8 +45,8 @@ const (
 )
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 10000] [-echo] [-dump-full]")
-	fmt.Fprintln(os.Stderr, "       ammaboard tui [program.amm]   interactive UI; no file = built-in counter demo")
+	fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amb [-o ammaboard.db] [-trace trace.txt] [-max 10000] [-echo] [-dump-full]")
+	fmt.Fprintln(os.Stderr, "       ammaboard tui [program.amb]   interactive UI; no file = built-in counter demo")
 }
 
 func main() {
@@ -126,7 +126,7 @@ func runMain(args []string) {
 		maxMajors = n
 	}
 	if len(pos) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amm [flags]")
+		fmt.Fprintln(os.Stderr, "usage: ammaboard run program.amb [flags]")
 		os.Exit(2)
 	}
 	if err := run(pos[0], dbPath, tracePath, maxMajors, echoOn, dumpFull); err != nil {

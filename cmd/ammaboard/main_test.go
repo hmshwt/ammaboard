@@ -18,7 +18,7 @@ const program = `
 // End-to-end smoke through the real wiring: assemble → run → SQLite → text export.
 func TestRunEndToEnd(t *testing.T) {
 	dir := t.TempDir()
-	src := filepath.Join(dir, "prog.amm")
+	src := filepath.Join(dir, "prog.amb")
 	db := filepath.Join(dir, "amma.db")
 	trace := filepath.Join(dir, "trace.txt")
 	if err := os.WriteFile(src, []byte(program), 0o644); err != nil {
@@ -44,7 +44,7 @@ func TestRunEndToEnd(t *testing.T) {
 // Pluggability through the real wiring path: -echo flips one boolean in wiring.
 func TestRunWithEchoDevice(t *testing.T) {
 	dir := t.TempDir()
-	src := filepath.Join(dir, "prog.amm")
+	src := filepath.Join(dir, "prog.amb")
 	db := filepath.Join(dir, "amma.db")
 	trace := filepath.Join(dir, "trace.txt")
 	if err := os.WriteFile(src, []byte(program), 0o644); err != nil {

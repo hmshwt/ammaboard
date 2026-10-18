@@ -88,7 +88,7 @@ change event kinds and must precede any golden fixture.
 
 ## Content and tooling
 
-- **D18 — `examples/timer.amm`** demonstrates the day-8 pattern: handler publishes a
+- **D18 — `examples/timer.amb`** demonstrates the day-8 pattern: handler publishes a
   count, acknowledges the line, disarms the timer at the target count; main spins on the
   published value. Data area at 128 — note `64(r0)` is decimal and would overlap code in
   programs larger than the counter's 9 words (this bit us once already).

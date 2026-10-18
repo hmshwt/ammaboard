@@ -22,7 +22,7 @@ This PoC proves the **motherboard architecture** (`docs/motherboard.md`):
 ## Run it
 
 ```sh
-go run ./cmd/ammaboard run examples/counter.amm -echo
+go run ./cmd/ammaboard run examples/counter.amb -echo
 ```
 
 You'll see the final registers and memory, plus two artifacts:
@@ -66,7 +66,7 @@ A timer at `0x4020` raises an interrupt line every N major ticks (`+0` = interva
 interrupts auto-forbidden; `return_from_interrupt` resumes. See it run:
 
 ```sh
-go run ./cmd/ammaboard run examples/timer.amm
+go run ./cmd/ammaboard run examples/timer.amb
 ```
 
 Trace highlights: every register change prints an `alu` line, latch commits name their
@@ -79,7 +79,7 @@ An improper halt — unknown opcode, unaligned word access, an address nothing o
 stray `return_from_interrupt` — freezes the machine and prints the Blue Screen: the
 fault explained in plain language, the offending instruction disassembled, every
 register and the memory around the faulting address, the last events before the stop,
-and a pointer into `trace.txt`. See `examples/bsod.amm` for a one-store crash. The
+and a pointer into `trace.txt`. See `examples/bsod.amb` for a one-store crash. The
 panel is also frozen into the `.db` as a `bluescreen` snapshot — a fault is data.
 
 ## Tests

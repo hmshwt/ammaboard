@@ -1,6 +1,6 @@
 # Critique of the external trace review
 
-Written 2026-10-16. Subject: an outside review of `trace.txt` (the `examples/counter.amm`
+Written 2026-10-16. Subject: an outside review of `trace.txt` (the `examples/counter.amb`
 run). The reviewer saw only the trace, not the code or planning docs — stated up front in
 their "questions I can't see answered" section. This critique cross-checks every claim
 against the implementation (`internal/machine/`) and the planning docs. Companion to
@@ -51,7 +51,7 @@ renderings of one register. The reviewer found two of the three.
   reviewer's "cleanest way to add byte addressing" is a description of what's already
   shipped, minus the byte-sized ops landing day 7.
 - **"The `echo@0x4000` line shows…" — that line is not in this trace.** It appears only
-  with `-echo`; `counter.amm` ran without it.
+  with `-echo`; `counter.amb` ran without it.
 - **Stage numbering doesn't exist in this project.** The curriculum is 24 doors / 16
   chapters (days 1–24); "stage" already means *ISA growth stage* (six of them, PLANNING.md).
   The review's "before stage 9 / stages 9–16" timeline is unmoored: interrupts are day 8,

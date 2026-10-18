@@ -12,7 +12,7 @@ major ticks). Scrolling: `j/k` or arrows on the focused pane, `g/G` top/bottom, 
 re-follows (pc / newest events; auto-follow while running). `esc` unwinds one level
 (help → main view; focused shell → panes). The tracked instruction is white on dark
 green — a highlighted line, not a pointer. Needs ≥141×28.
-`ammaboard tui [file.amm]` (no file = built-in counter demo). Deferred:
+`ammaboard tui [file.amb]` (no file = built-in counter demo). Deferred:
 Blue Screen overlay (faults currently show in the state line + red log lines; the CLI
 renders the full panel), hex/asm toggle, timeline view, editor, mouse.
 

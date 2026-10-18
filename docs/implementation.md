@@ -74,8 +74,8 @@ No custom binary trace format, ever.
 
 ## CLI
 ```
-ammaboard run program.amm [-o ammaboard.db] [-trace trace.txt] [-max 10000] [-echo] [-dump-full]
-ammaboard tui [program.amm]
+ammaboard run program.amb [-o ammaboard.db] [-trace trace.txt] [-max 10000] [-echo] [-dump-full]
+ammaboard tui [program.amb]
 ```
 - Default wiring: RAM 16KB at 0x0000, timer at 0x4020, entry 0x0000.
 - `run` is the batch path: full SQLite log + text export + verdict (see above).

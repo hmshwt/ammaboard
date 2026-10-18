@@ -1,5 +1,5 @@
 ; ─────────────────────────────────────────────────────────────
-; counter.amm — store 0..4 at 64..76, load the last one back.
+; counter.amb — store 0..4 at 64..76, load the last one back.
 ; Read it aloud; every line is a sentence.
 ; ─────────────────────────────────────────────────────────────
 
