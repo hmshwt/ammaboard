@@ -1,7 +1,7 @@
 # tuikit — Design Contract
 
 **One-liner:** a small, boring kernel over bubbletea/lipgloss that turns layout, screens, and key routing into declarative data — compose, never wrap.
-**Status:** design frozen; zero code written.
+**Status:** implemented — v0.1.0, 2026-10-18 (kernel only; `internal/tui` not yet migrated). Architecture & API surface: `internal/tuikit/ARCHITECTURE.md`.
 
 ## Placement & dependency law
 - `internal/tuikit` — the kernel.
@@ -12,7 +12,9 @@
 
 ## Core rules
 - **Compose, never wrap.** App root stays a plain `tea.Model`; raw `tea.Msg`/`tea.Cmd` everywhere; the kit routes, never rewrites.
-- **Kernel, not framework.** Extracted from real usage, hard size cap ≈ 400 lines, no speculative knobs.
+- **Kernel, not framework.** Extracted from real usage, sized ≈ 1,200 lines across a
+  dozen files (budget revised 2026-10-18 from the sketch's ≈400 when screens and the
+  wiring audit landed), no speculative knobs.
 - **Immediate mode.** Every region is a pure per-frame derivation of (machine state + event tail + owned view state). No buffers, no dirty flags, no revision counters.
 - **One machine truth.** Board/proc/mem/EventLog are read-only to the UI, never copied into components.
 - **Ownership:** machine state — nobody's (derive only) · scroll state — panes · focus ring — screen (one per screen) · key precedence — regions · screen selection — app policy · control state (running/speed) — app. *State lives in components; policy lives in composites.*
@@ -65,6 +67,7 @@ unconsumed → no-op
 - All headless — keymaps, regions, and layouts are plain values.
 - Kit: layout properties (rows sum, equal heights), keymap generation, routing table, modal unwind, `NoShadowing`, `TestScreenSwitchPreservesState`, `AssertCleanWiring`.
 - App: existing behavior assertions preserved (plumbing mechanically adapted); the glyph-counting layout test is retired on purpose, replaced by frame properties + one row-count/content integration check.
+- Scale at v0.1.0 (2026-10-18): 47 kit tests, all headless.
 
 ## Wiring audit (`Verify`)
 The assembled wiring is a value graph — keymaps, frames, screens are data — so it can be audited. One audit, three exposures:
@@ -95,3 +98,19 @@ Mouse events (rects exported; wheel-scroll is the first future candidate) · the
 ## Rollout
 - One atomic change: tuikit + componentized `internal/tui` + adapted tests + `cmd` import flip; full gate (gofmt, vet, all packages, build, pty smoke, `ammaboard tui --check` clean).
 - Side quest kept cheap: the dependency law is the extraction seam; a publish decision waits on the kit surviving several real additions without breaking change — no community-driven API compromises until then.
+
+## Implementation notes — deviations from the sketch (recorded 2026-10-18, approved)
+- `Screen.RegionKeys(focus int) Keymap`: the host wiring point for the region scope — the
+  sketch listed screen `Keys` but not how focused-region keys reach the router.
+- `App.Styles` field + `NewApp()`: the palette-override point; a zero-value `App` is not
+  a supported shape.
+- Chrome rows are multi-line: one string per cell-less row, split on newlines and
+  padded/clipped to the row's height (the bottom block is a box, not a line).
+- `AssertCleanWiring` takes a kit-local `TestingT` interface — the kernel never imports
+  the `testing` package.
+- FullBleed-without-own-keys is a Warning, not an Error: global verbs always remain
+  reachable at routing level 5, so a hard error would be vacuous.
+- Focus cycling (tab/shift+tab) is kit-owned in `App.Update`; the host documents it with
+  a display-only global binding so generated help stays truthful.
+- The mid-discussion `Screen.RenderRegions` sketch was dropped; region rendering lives in
+  `App.render` — one renderer, one place to debug.

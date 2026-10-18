@@ -134,7 +134,9 @@ golden-trace fixtures freeze the event vocabulary — flag objections before the
 - **D41 — tuikit: a kernel over bubbletea/lipgloss; `internal/ui` becomes
   `internal/tui`.** The hand-wired TUI leaks its layout contract into arithmetic
   (`height-9`, `inner-7`), maintains its key help twice, and grows an if-chain
-  per overlay. Response: a small kernel (`internal/tuikit`, ~400-line cap) whose
+  per overlay. Response: a small kernel (`internal/tuikit`; sized ≈1,200 lines
+  across a dozen files — budget revised 2026-10-18 from the sketch's ≈400 when
+  screens and the wiring audit landed) whose
   only dependencies are bubbletea/v2, lipgloss/v2, and stdlib — never `bubbles`,
   never `internal/*`, never ultraviolet. Compose, never wrap: the app root stays
   a plain `tea.Model`; raw `tea.Msg`/`tea.Cmd` everywhere. Immediate mode

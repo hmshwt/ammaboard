@@ -195,3 +195,64 @@ func TestTooSmallView(t *testing.T) {
 		t.Errorf("an undersized terminal must be refused, got %q", out)
 	}
 }
+
+func TestWindowSizeResizesFrame(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	if strings.Contains(app.View().Content, "left") {
+		t.Fatal("before any size message the frame cannot fit its minimum")
+	}
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	if !app.Screens.Current().Frame.Fits() {
+		t.Fatal("the size message must resize the current screen's frame")
+	}
+	if !strings.Contains(app.View().Content, "left") {
+		t.Fatal("regions render once the frame fits")
+	}
+}
+
+func TestUnconsumedKeyIsHarmless(t *testing.T) {
+	app, rec, _ := newTestApp(t)
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	key(app, 'z', "z")
+	if len(rec.hits) != 0 {
+		t.Fatalf("an unclaimed key must be a no-op, got %v", rec.hits)
+	}
+}
+
+func TestEscWithNoModalIsHarmless(t *testing.T) {
+	app, rec, _ := newTestApp(t)
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if len(rec.hits) != 0 {
+		t.Fatalf("esc with nothing open changes nothing: %v", rec.hits)
+	}
+}
+
+func TestViewWithoutChromeOrScreensIsBlank(t *testing.T) {
+	if out := NewApp().View().Content; out != "" {
+		t.Errorf("an app without screens renders nothing, got %q", out)
+	}
+	app, _, _ := newTestApp(t)
+	app.Chrome = nil
+	if out := app.View().Content; out != "" {
+		t.Errorf("without the chrome hook there is nothing to draw, got %q", out)
+	}
+}
+
+func TestChromeMultilineClipAndPad(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	app.Chrome = func(w, h int) []string { return []string{"A\nB", "C"} }
+	rows := strings.Split(app.View().Content, "\n")
+	if len(rows) != 12 {
+		t.Fatalf("frame is %d rows, want 12", len(rows))
+	}
+	if strings.Contains(rows[0], "B") {
+		t.Errorf("a height-1 chrome row clips multi-line content: %q", rows[0])
+	}
+	if !strings.Contains(rows[10], "C") {
+		t.Errorf("the bottom row renders its content: %q", rows[10])
+	}
+	if strings.TrimSpace(rows[11]) != "" {
+		t.Errorf("short chrome is padded to the row height: %q", rows[11])
+	}
+}

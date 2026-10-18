@@ -140,3 +140,30 @@ func TestAssertCleanWiring(t *testing.T) {
 		t.Error("a reserved-key shadow must fail the assert")
 	}
 }
+
+func TestVerifyDuplicateScreenName(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	app.Screens.Register(NewScreen("main", 50, 10, 1)) // same name again
+	errs := issuesBy(app.Verify(), SeverityError)
+	if !strings.Contains(strings.Join(errs, "; "), "registered twice") {
+		t.Errorf("re-registration must be an error, got %v", errs)
+	}
+}
+
+func TestVerifyHintsWidthWarning(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	s := app.Screens.All()[0]
+	s.Frame = NewFrame(10, 10) // narrower than the generated hints line
+	s.Frame.Row(Fixed(1))
+	s.Frame.Row(Fill()).Cols(Fixed(8), Fill())
+	s.Frame.Row(Fixed(2))
+	found := false
+	for _, w := range issuesBy(app.Verify(), SeverityWarn) {
+		if strings.Contains(w, "hints") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("a hints line wider than the declared minimum deserves a warning")
+	}
+}
