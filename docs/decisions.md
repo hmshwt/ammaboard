@@ -178,3 +178,23 @@ golden-trace fixtures freeze the event vocabulary — flag objections before the
   `Merge` collisions, empty `Help`, hints wider than `minW`. Honest limits
   recorded: no runtime terminal fit (the `TooSmall` notice owns that), no
   semantic-duplicate detection, nothing that needs rendering.
+- **D44 — constraints, the resize cascade, and `testrender` (v0.2.0): the
+  need-to-develop test framework.** Three additions, each earning its place.
+  (1) `Constraints{MinW,MinH}` on `Region` — a component's declared smallest
+  useful cell; `Verify` resolves the frame at the screen's declared minimum
+  (where fill-splitting is deterministic) and errors when a promise cannot be
+  met there. Per-pane geometry becomes data — the geometry twin of the keymap
+  audit. (2) The resize cascade: `WindowSizeMsg → Frame.Resize → each
+  focusable gets its own cell viewport via `Screen.RegionResize` → host
+  children`. Geometry is not input: it bypasses capture (the old code
+  swallowed resizes under an open modal), and non-key messages always reach
+  `Handle` — the machine keeps stepping under help, as it always has.
+  (3) `internal/tuikit/testrender`: the minimal visual-testing engine —
+  `StripANSI`, a palette-bound SGR decoder into `Cell{Rune, Attr}` grids (the
+  VGA attribute+character pair; the kitty era grows the struct), and golden
+  files with `-update`. Fence, recorded so future-us behaves: no images or
+  OSC capture, no pixel or percentage diffs, no wait/retry, no terminal
+  matrices, no ANSI generation — we decode only the vocabulary the kit itself
+  emits. Golden files and the Go-native pty smoke (retiring the Python
+  scratch harness in /tmp) land with `internal/tui`, where goldens have real
+  frames to look at.

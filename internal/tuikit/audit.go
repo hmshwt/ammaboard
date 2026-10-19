@@ -89,10 +89,28 @@ func (a *App) verifyScreen(scr *Screen, out *[]Issue) {
 		*out = append(*out, Issue{SeverityError, scr.Name, "no layout"})
 	}
 	scr.Frame.audit(scr.Name, out)
+	var regions []Region
 	if scr.Layout != nil {
-		if n := len(scr.Layout()); n != scr.Focusables {
+		regions = scr.Layout()
+		if n := len(regions); n != scr.Focusables {
 			*out = append(*out, Issue{SeverityError, scr.Name,
 				fmt.Sprintf("layout renders %d regions, screen declares %d focusables", n, scr.Focusables)})
+		}
+	}
+	// Constraints: the frame resolves deterministically at the declared
+	// minimum, so every region's promise is checkable exactly there.
+	if len(regions) > 0 {
+		cells := scr.Frame.cellRectsAt(scr.Frame.minW, scr.Frame.minH)
+		for i, reg := range regions {
+			if i >= len(cells) {
+				break // count mismatch already reported
+			}
+			c, cell := reg.Constraints, cells[i]
+			if cell.W < c.MinW || cell.H < c.MinH {
+				*out = append(*out, Issue{SeverityError, scr.where(fmt.Sprintf("region %d", i)),
+					fmt.Sprintf("at the declared minimum the cell is %d×%d, the region declares ≥%d×%d",
+						cell.W, cell.H, c.MinW, c.MinH)})
+			}
 		}
 	}
 

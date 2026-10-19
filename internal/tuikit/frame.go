@@ -106,6 +106,34 @@ func (c *Cell) Rect() Rect {
 	return c.rect
 }
 
+// cellRectsAt returns the cell rectangles the frame resolves to at the given
+// terminal size, without disturbing live state. Resolution at a fixed size is
+// deterministic, which is what makes the wiring audit's constraint check and
+// the resize cascade exact.
+func (f *Frame) cellRectsAt(w, h int) []Rect {
+	rowSpans := make([]Span, len(f.rows))
+	for i, r := range f.rows {
+		rowSpans[i] = r.span
+	}
+	heights := splitSpans(h, rowSpans)
+	var out []Rect
+	y := 0
+	for i, r := range f.rows {
+		cellSpans := make([]Span, len(r.cells))
+		for j, c := range r.cells {
+			cellSpans[j] = c.span
+		}
+		widths := splitSpans(w, cellSpans)
+		x := 0
+		for j := range r.cells {
+			out = append(out, Rect{X: x, Y: y, W: widths[j], H: heights[i]})
+			x += widths[j]
+		}
+		y += heights[i]
+	}
+	return out
+}
+
 // resolve lays out rows and cells for the current terminal size. Layout is
 // recomputed only after a structural change or a resize.
 func (f *Frame) resolve() {

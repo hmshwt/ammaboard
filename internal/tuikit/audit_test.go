@@ -167,3 +167,14 @@ func TestVerifyHintsWidthWarning(t *testing.T) {
 		t.Error("a hints line wider than the declared minimum deserves a warning")
 	}
 }
+
+func TestVerifyConstraints(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	app.Screens.All()[0].Layout = func() []Region {
+		return []Region{{Title: "fits"}, {Title: "greedy", Constraints: Constraints{MinW: 60}}}
+	}
+	errs := strings.Join(issuesBy(app.Verify(), SeverityError), "; ")
+	if !strings.Contains(errs, "declares ≥60×0") {
+		t.Errorf("a region wider than its cell at the declared minimum must error, got %s", errs)
+	}
+}

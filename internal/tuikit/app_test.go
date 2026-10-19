@@ -1,6 +1,7 @@
 package tuikit
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -256,3 +257,51 @@ func TestChromeMultilineClipAndPad(t *testing.T) {
 		t.Errorf("short chrome is padded to the row height: %q", rows[11])
 	}
 }
+
+func TestResizeCascade(t *testing.T) {
+	app, rec, _ := newTestApp(t)
+	app.Screens.All()[0].RegionResize = func(focus, w, h int) {
+		rec.hits = append(rec.hits, fmt.Sprintf("r%d:%dx%d", focus, w, h))
+	}
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	want := []string{"r0:8x9", "r1:72x9"} // each region sees its own cell, not the terminal
+	if !slices.Equal(rec.hits, want) {
+		t.Fatalf("cascade = %v, want %v", rec.hits, want)
+	}
+}
+
+func TestResizeBypassesModalCapture(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	app.Modals.Push(staticModal{body: "help"})
+	saw := false
+	app.Handle = func(msg tea.Msg) (tea.Cmd, bool) {
+		if _, ok := msg.(tea.WindowSizeMsg); ok {
+			saw = true
+		}
+		return nil, false
+	}
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	if !saw {
+		t.Fatal("geometry is not input: resize must reach the host under a modal")
+	}
+	if !app.Screens.Current().Frame.Fits() {
+		t.Fatal("the frame must resize under a modal")
+	}
+}
+
+func TestTicksFlowUnderModal(t *testing.T) {
+	app, rec, _ := newTestApp(t)
+	app.Modals.Push(staticModal{body: "help"})
+	app.Handle = func(msg tea.Msg) (tea.Cmd, bool) {
+		if _, ok := msg.(tickMsg); ok {
+			rec.hits = append(rec.hits, "tick")
+		}
+		return nil, false
+	}
+	app.Update(tickMsg{})
+	if !slices.Equal(rec.hits, []string{"tick"}) {
+		t.Fatal("non-key messages are not captured — the machine keeps stepping under help")
+	}
+}
+
+type tickMsg struct{}

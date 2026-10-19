@@ -16,6 +16,13 @@ type Screen struct {
 	// screen has no region scope.
 	RegionKeys func(focus int) Keymap
 
+	// RegionResize is the resize cascade's leaf: on tea.WindowSizeMsg the kit
+	// translates the terminal size into each region's own cell viewport and
+	// hands it here. The host forwards to stateful children (an input's
+	// width). nil is fine — pure regions derive from their cell every frame
+	// and need no events.
+	RegionResize func(focus int, w, h int)
+
 	FocusRing  FocusRing
 	Focusables int // declared region count; the ring and the audit key off it
 }

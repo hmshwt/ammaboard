@@ -6,6 +6,13 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// Constraints is a component's declaration of the smallest cell it stays
+// useful in — geometry as data, checked by the wiring audit. Zero values mean
+// no opinion.
+type Constraints struct {
+	MinW, MinH int
+}
+
 // Region is one boxed pane: title, fixed header, scrollable body. A Region is
 // a value built fresh each frame; Render pads or clips it to EXACTLY h rows,
 // so equal pane heights are structural, not discipline.
@@ -14,6 +21,12 @@ type Region struct {
 	Header  []Line
 	Body    []Line
 	Focused bool
+
+	// Constraints declares the smallest cell this region stays useful in.
+	// Verify resolves the frame at the screen's declared minimum — where the
+	// fill-splitting is deterministic — and errors if the promise cannot be
+	// met there.
+	Constraints Constraints
 }
 
 // Styles carries the palette the frame furniture needs. The kit ships

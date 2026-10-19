@@ -1,7 +1,7 @@
 # tuikit — Design Contract
 
 **One-liner:** a small, boring kernel over bubbletea/lipgloss that turns layout, screens, and key routing into declarative data — compose, never wrap.
-**Status:** implemented — v0.1.0, 2026-10-18 (kernel only; `internal/tui` not yet migrated). Architecture & API surface: `internal/tuikit/ARCHITECTURE.md`.
+**Status:** implemented — v0.2.0, 2026-10-18 (kernel + `testrender`; `internal/tui` not yet migrated). Architecture & API surface: `internal/tuikit/ARCHITECTURE.md`.
 
 ## Placement & dependency law
 - `internal/tuikit` — the kernel.
@@ -25,12 +25,12 @@
 ## Primitives (per file)
 - **`line.go`** — `Line{Text, Style}` · `Plain` / `Styled` / `Lines` · `Render(width)` (pads to width) · `Truncate` · `Clamp`.
 - **`frame.go`** — `Rect`, `Inner()` · `Frame`, `NewFrame(minW, minH)`, `Resize`, `Fits`, `TooSmall` · `Row(Span)` · `(*Row).Cols(Span...) []*Cell` · `Cell.Rect()` (mouse hit-testing free later; events out of scope) · `Span` (unexported): `Fixed(n)`, `Fill()` (multiple fills share remainder).
-- **`region.go`** — `Region{Title, Header, Body, Focused}` · `Render(w, h, Styles)` pads/clips to **exactly h rows** — equal heights are structural · `Styles{Border, BorderFocused, Title, Dim}` + `DefaultStyles` (no theming engine; app overrides).
+- **`region.go`** — `Region{Title, Header, Body, Focused, Constraints}` · `Render(w, h, Styles)` pads/clips to **exactly h rows** — equal heights are structural · `Constraints{MinW, MinH}` = the smallest useful cell, declared per region and audited at the screen's declared minimum · `Styles{Border, BorderFocused, Title, Dim}` + `DefaultStyles` (no theming engine; app overrides).
 - **`scroll.go`** — `Scroll` (top, follow) · `NewScroll` · `Key(k) bool` · `Window(track, total, height) int` · `Reset` · `Following` · const `FollowPin = 3`.
 - **`focus.go`** — `FocusRing` · `Next`/`Prev`/`Index`/`Is`/`Reset`. One ring per screen; focus selects the routing entry point, nothing else.
 - **`keymap.go`** — `Binding{Keys, Help, Run}` · `Bind(...)` builder · `Keymap.Route / Hints / Help` · `ScrollKeys(&s)` (scroll keys as generated Keymap) · `Merge(kms...)` first-consumer-wins · `Collisions(kms...)` + `NoShadowing` test helpers.
 - **`modal.go`** — `Modal` interface · `ModalStack.Push/Pop/Active` (esc pops one level) · `Center(body, w, h, padX)`.
-- **`screen.go`** — `Screen{Name, Frame, FullBleed, Keys, FocusRing, Layout func() []Region}` · `ScreenSet.Register/Switch/Current`. Flat registry; no stack; no nested screens.
+- **`screen.go`** — `Screen{Name, Frame, FullBleed, Keys, RegionResize, FocusRing, Focusables, Layout func() []Region}` · `ScreenSet.Register/Switch/Current`. Flat registry; no stack; no nested screens.
 - **`app.go`** — embeddable `App{Screens, Modals, Keys}` implementing `tea.Model`; host hooks: `Handle(msg) (cmd, handled)`, `Chrome(w, h) []string` (bottom block). Kit routes; tui decides. Wiring audit: `Verify() []Issue` + `AssertCleanWiring` (see below).
 
 **Interface count: 3** (`Span` unexported, `Modal`, region `Keys() Keymap`). Everything else is values and functions.
@@ -58,6 +58,9 @@ CAPTURE (preempts; esc releases)      ROUTING (first consumer wins)
                                       5. global Keys()
 unconsumed → no-op
 ```
+Geometry is not input: `tea.WindowSizeMsg` bypasses capture, resizes the
+frame, and cascades each focusable its **own cell viewport** via
+`Screen.RegionResize` — children never see terminal numbers.
 - **Keymaps are derived per dispatch** — grammar is derived state, same as pixels; activation via composition (`Merge`), never flags or `When` predicates. Help cannot lie.
 - Within a region: deliberate precedence = `Merge` order, written once, visible; across scopes: duplicates are errors. `q`/`ctrl+c`/`esc` reserved globally.
 - Hints line = global + current screen (stable per screen); help modal = full derived grammar, grouped global / screen / regions.
@@ -67,7 +70,8 @@ unconsumed → no-op
 - All headless — keymaps, regions, and layouts are plain values.
 - Kit: layout properties (rows sum, equal heights), keymap generation, routing table, modal unwind, `NoShadowing`, `TestScreenSwitchPreservesState`, `AssertCleanWiring`.
 - App: existing behavior assertions preserved (plumbing mechanically adapted); the glyph-counting layout test is retired on purpose, replaced by frame properties + one row-count/content integration check.
-- Scale at v0.1.0 (2026-10-18): 47 kit tests, all headless.
+- Scale at v0.2.0 (2026-10-18): 57 tests (52 kit + 5 testrender), all headless; golden
+  files and the Go-native pty smoke land with `internal/tui` (see D44).
 
 ## Wiring audit (`Verify`)
 The assembled wiring is a value graph — keymaps, frames, screens are data — so it can be audited. One audit, three exposures:

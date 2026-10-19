@@ -41,10 +41,14 @@ func (a *App) Init() tea.Cmd { return nil }
 
 // Update is the routing contract (docs/tuikit.md):
 //
-//	capture: an open modal owns the keyboard — esc pops one level, global
-//	         verbs still answer, nothing leaks to regions or the host;
-//	         host-enforced grabs (focused input) stop the chain in Handle
-//	routing: focused region → screen → global; first consumer wins
+//	geometry: tea.WindowSizeMsg resizes the frame and cascades each region's
+//	          own cell viewport (Screen.RegionResize). Geometry is not input —
+//	          it bypasses capture, and non-key messages always reach Handle
+//	          (the machine keeps stepping under the help overlay)
+//	capture:  keys only — an open modal (esc pops one level; global verbs
+//	          answer; nothing leaks) and host grabs (Handle, handled=true)
+//	routing:  focused region Keys() → screen Keys() → global Keys(); first
+//	          consumer wins
 //
 // tab/shift+tab cycle the current screen's focus ring — the kit's reflex;
 // the host documents it with a display-only binding so help stays truthful.
@@ -53,27 +57,26 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.w, a.h = ws.Width, ws.Height
 		if scr := a.current(); scr != nil {
 			scr.Frame.Resize(a.w, a.h)
+			a.resizeRegions(scr)
 		}
 	}
-	if a.Modals.Active() {
-		if key, ok := msg.(tea.KeyPressMsg); ok {
-			if key.String() == "esc" {
-				a.Modals.Pop()
-				return a, nil
-			}
-			if cmd, done := a.Keys.Route(key.String()); done {
-				return a, cmd
-			}
+	key, isKey := msg.(tea.KeyPressMsg)
+	if isKey && a.Modals.Active() {
+		if key.String() == "esc" {
+			a.Modals.Pop()
+			return a, nil
 		}
-		return a, nil
+		if cmd, done := a.Keys.Route(key.String()); done {
+			return a, cmd
+		}
+		return a, nil // captured: keys do not leak to the host or the regions
 	}
 	if a.Handle != nil {
 		if cmd, done := a.Handle(msg); done {
 			return a, cmd
 		}
 	}
-	key, ok := msg.(tea.KeyPressMsg)
-	if !ok {
+	if !isKey {
 		return a, nil
 	}
 	k := key.String()
@@ -99,6 +102,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	}
 	return a, nil
+}
+
+// resizeRegions runs the cascade's leaf: every focusable region learns its
+// own cell viewport at the new size — the screen translates window
+// coordinates into region coordinates so children never see terminal numbers.
+func (a *App) resizeRegions(scr *Screen) {
+	if scr.RegionResize == nil {
+		return
+	}
+	cells := scr.Frame.cellRectsAt(a.w, a.h)
+	for i := 0; i < scr.Focusables && i < len(cells); i++ {
+		scr.RegionResize(i, cells[i].W, cells[i].H)
+	}
 }
 
 // View assembles the frame: chrome rows and region rows in frame order, the
