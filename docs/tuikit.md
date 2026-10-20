@@ -70,8 +70,10 @@ frame, and cascades each focusable its **own cell viewport** via
 - All headless — keymaps, regions, and layouts are plain values.
 - Kit: layout properties (rows sum, equal heights), keymap generation, routing table, modal unwind, `NoShadowing`, `TestScreenSwitchPreservesState`, `AssertCleanWiring`.
 - App: existing behavior assertions preserved (plumbing mechanically adapted); the glyph-counting layout test is retired on purpose, replaced by frame properties + one row-count/content integration check.
-- Scale at v0.2.0 (2026-10-18): 57 tests (52 kit + 5 testrender), all headless; golden
-  files and the Go-native pty smoke land with `internal/tui` (see D44).
+- Scale at v0.2.0 (2026-10-18): 57 tests (52 kit + 5 testrender), all headless; the
+  Go-native pty smoke (`cmd/ammaboard/pty_test.go`, creack/pty) landed 2026-10-20
+  ahead of the migration and retires the Python scratch harness. Golden files still
+  land with `internal/tui`, where goldens have real frames to look at (see D44).
 
 ## Wiring audit (`Verify`)
 The assembled wiring is a value graph — keymaps, frames, screens are data — so it can be audited. One audit, three exposures:
