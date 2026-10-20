@@ -1,10 +1,10 @@
 # tuikit — Design Contract
 
 **One-liner:** a small, boring kernel over bubbletea/lipgloss that turns layout, screens, and key routing into declarative data — compose, never wrap.
-**Status:** implemented — v0.2.0, 2026-10-18; `internal/tui` migrated onto the kernel
-2026-10-20 (kernel contract held: one new pane was one file + one registration; the
-pty smoke carried over with two updated strings). Architecture & API surface:
-`internal/tuikit/ARCHITECTURE.md`.
+**Status:** implemented — kernel v0.3.0, 2026-10-20 (receipts + `Emit`, D45);
+`internal/tui` migrated onto the kernel 2026-10-20 (kernel contract held: one new
+pane was one file + one registration; the pty smoke carried over with two updated
+strings). Architecture & API surface: `internal/tuikit/ARCHITECTURE.md`.
 
 ## Placement & dependency law
 - `internal/tuikit` — the kernel.

@@ -1,11 +1,11 @@
 # tuikit — architecture & API surface
 
-**v0.2.0 · 2026-10-18** · built against bubbletea/v2 v2.0.9 · lipgloss/v2 v2.0.6
-Contract: `docs/tuikit.md` (D41–D43). Version bumps with the API surface: minor
+**v0.3.0 · 2026-10-20** · built against bubbletea/v2 v2.0.9 · lipgloss/v2 v2.0.6
+Contract: `docs/tuikit.md` (D41–D45). Version bumps with the API surface: minor
 for additions, major for breaks. Update this file whenever either changes.
 
 ## Shape
-≈1,200 lines, 11 files, 3 interfaces (`Span`, `Modal`, `KeySource` via
+≈1,600 lines, 13 files, 3 interfaces (`Span`, `Modal`, `KeySource` via
 `Keys() Keymap`). One idea: layout, screens, and keys are declarative data —
 assembled once by the host, derived fresh every frame.
 
@@ -17,12 +17,16 @@ only one that assembles. Test-support beside the kernel: `testrender`
 
 ## Frame of a tick
 ```
+queued facts (Emit) ─→ dispatched first: FIFO, provenance stamped, at the
+                        boundary — never inline, never re-entrant
 tea.WindowSizeMsg ─→ Frame.Resize ─→ RegionResize(i, cellW, cellH) per focusable
                       (geometry is not input: it bypasses capture, always reaches Handle)
 Layout() []Region ─→ focused region marked ─→ region rows render into cell rects
 Chrome hook       ─→ fills cell-less rows (padded/clipped to row height)
 Modal active      ─→ replaces the region area only; esc pops one level
 Frame too small   ─→ refusal notice, never clip or scale
+every dispatch    ─→ a receipt: the ladder walk, the capture verdict, the
+                      provenance of any command it produced
 ```
 
 ## Key routing (the whole contract)
@@ -30,7 +34,10 @@ Frame too small   ─→ refusal notice, never clip or scale
 capture:  modal active → esc pops, global verbs answer, nothing leaks
           host grab    → Handle returns handled=true (focused input, ticks)
 routing:  focused region Keys() → screen Keys() → global Keys(); first wins
+          (the walk stops at the hit — nothing past it is consulted)
 focus:    tab / shift+tab cycle the current screen's ring (kit-owned)
+receipts: AssertRoute tests the walk; Trace.Log prints it; identical
+          consecutive receipts compress so a heartbeat cannot drown the log
 ```
 
 ## API by file
@@ -55,8 +62,18 @@ focus:    tab / shift+tab cycle the current screen's ring (kit-owned)
   RegionResize, FocusRing, Focusables}`; `NewScreen(name,minW,minH,
   focusables)`; `ScreenSet.Register/Switch/Current/All` (flat registry, no
   stack).
-- **app.go** — `App{Screens, Modals, Keys, Styles, Handle, Chrome}`; `NewApp`;
-  `Init/Update/View` (implements `tea.Model`; embeddable).
+- **app.go** — `App{Screens, Modals, Keys, Styles, Handle, Chrome, Trace}`; `NewApp`;
+  `Init/Update/View` (implements `tea.Model`; embeddable); `Emitter(from) Emit` —
+  the upward channel; `dispatchPending` drains facts before the current message;
+  every command the dispatch produces is wrapped with its producer's label.
+- **emit.go** — the upward channel: `Emit.Send(msg)` queues a fact for the root —
+  a notice, never a payload; FIFO, one frame of latency, safe from any goroutine,
+  never re-entrant. No subscriptions, no targeting, no priorities: one queue,
+  one consumer.
+- **trace.go** — the receipt ring: `TraceKind` `TraceEvent{Seq, Kind, Key, From,
+  What, Count}` `Trace.Snapshot/Log`; identical consecutive receipts compress
+  (`Count`), the ring is bounded; `AssertRoute(t, app, key, want)` makes the
+  routing contract a test. The dynamic twin of the wiring audit.
 - **audit.go** — `Issue`, `Severity`; `App.Verify() []Issue`;
   `AssertCleanWiring(TestingT, App)`.
 - **testrender/** — stdlib-only visual-testing support: `StripANSI`;
@@ -86,6 +103,11 @@ focus:    tab / shift+tab cycle the current screen's ring (kit-owned)
 - Hidden screens cost nothing; switching screens changes no state.
 - Geometry is not input: resize bypasses capture; keys are the only thing
   capture ever swallows.
+- Emissions are facts, never payloads or instructions: state moves through
+  stores, the queue says something happened — one queue, one consumer, no
+  subscriptions, no targeting.
+- Every dispatch leaves a receipt; the receipts are the debug surface, never
+  a behavior input — silencing the Trace must change nothing.
 - The kernel imports only bubbletea, lipgloss, and stdlib — never `bubbles`,
   never `ultraviolet`, never `internal/*`.
 

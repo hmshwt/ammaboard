@@ -198,3 +198,23 @@ golden-trace fixtures freeze the event vocabulary — flag objections before the
   emits. Golden files and the Go-native pty smoke (retiring the Python
   scratch harness in /tmp) land with `internal/tui`, where goldens have real
   frames to look at.
+- **D45 — receipts and the upward channel (v0.3.0).** Two kit additions, both
+  debug-driven. (1) The receipt ring: every dispatch leaves a `TraceEvent` —
+  keys record the ladder walk (first consumer wins: the walk stops at the
+  hit), messages record the Handle verdict, commands are wrapped with their
+  producer's label, emissions carry provenance. Identical consecutive
+  receipts compress (`Count`), the ring is bounded, silencing it changes
+  nothing. `AssertRoute` makes the routing contract a test; `Trace.Log` is
+  the debug surface. The dynamic twin of `Verify` — the audit says what
+  would happen, receipts say what happened. (2) `Emit`: the upward channel —
+  a component holds its own state and emits *facts* (notices, never
+  payloads) through a provenance-stamped queue with exactly one consumer:
+  the root stream. Drained at the next Update boundary, FIFO, one frame of
+  latency, safe from any goroutine, never re-entrant. Fences: no
+  subscriptions or interest registries, no targeting, no priorities, plain
+  `tea.Msg` only — one queue, one consumer. Refused en route, recorded so
+  future-us behaves: declared message-interest DAGs (a registry plus fan-out
+  ordering semantics — the framework line), root-level derivation caches
+  (the transitive-read-set problem: the theme swap breaks every key), and
+  mutexes on shared stores (torn frames mid-View, unreceiptable writes) —
+  the msg channel already is the lock, aligned to frame boundaries.
