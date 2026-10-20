@@ -56,10 +56,10 @@ func TestTUIGoesThroughARealPty(t *testing.T) {
 	bin, root := buildBinary(t)
 	s := startTUI(t, bin, filepath.Join(root, "examples", "counter.amb"))
 
-	// First paint: all three panes, the hints line, the machine not started.
+	// First paint: all three panes, the generated hints line, not started.
 	s.expect("add_number r1, r0, 0", "not started",
 		"memory · f follows the pc", "tick log · f follows newest",
-		"j/k scroll", "f follow")
+		"run/pause", "q quit")
 
 	// The cursor highlight: a white-on-dark-green background escape must be
 	// emitted (truecolor 48;2;0;100;0 for #006400, or a downgraded 48;5;N).
@@ -85,9 +85,10 @@ func TestTUIGoesThroughARealPty(t *testing.T) {
 	s.send("\tj\tj\tjk")
 	s.expect("r0 00000000")
 
-	// Help opens, esc closes it, toggling is harmless.
+	// Help opens (generated from the keymaps), esc closes it, toggling is
+	// harmless.
 	s.send("?")
-	s.expect("jump to top / bottom")
+	s.expect("jump to bottom")
 	s.esc() // esc closes the help overlay
 	s.expect("memory · f follows the pc")
 

@@ -2,7 +2,7 @@ package main
 
 // tui.go — the interactive path: assemble a program (or the built-in counter
 // demo), wire a machine with an in-memory event tail, and hand both to the
-// bubbletea model in internal/ui. No SQLite here — the TUI is a view over the
+// bubbletea model in internal/tui. No SQLite here — the TUI is a view over the
 // live machine, and logging remains the batch path's job.
 
 import (
@@ -14,7 +14,7 @@ import (
 	"ammaboard/internal/machine"
 	"ammaboard/internal/machine/cpu"
 	"ammaboard/internal/machine/ram"
-	"ammaboard/internal/ui"
+	tuiapp "ammaboard/internal/tui"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -52,7 +52,7 @@ func tui(srcPath string) error {
 		return fmt.Errorf("assemble: %w", err)
 	}
 
-	events := ui.NewEventLog(512)
+	events := tuiapp.NewEventLog(512)
 	// newMachine is the reset path too: wiring + program load, nothing else.
 	// The events log is shared across resets — the sink closure keeps pointing
 	// at it, and reset() clears its contents.
@@ -64,7 +64,7 @@ func tui(srcPath string) error {
 		return w.board, w.cpu, w.ram
 	}
 
-	m := ui.New(name, words, events, newMachine)
+	m := tuiapp.New(name, words, events, newMachine)
 	_, err = tea.NewProgram(m).Run()
 	return err
 }
